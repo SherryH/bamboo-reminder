@@ -1,0 +1,1388 @@
+# Bamboo Bank Implementation Tasks
+
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+
+**Goal:** Build a LINE Bot that sends daily inspirational quotes, good deed suggestions, and donation reminders at noon Taipei time.
+
+**Architecture:** Express server on Render free tier with Upstash Redis for state. GitHub Actions cron triggers GET /send daily. Single source file (~80 lines).
+
+**Tech Stack:** Node.js, Express, @line/bot-sdk, @upstash/redis, Jest + Supertest
+
+**Source Specs:**
+- `docs/plans/2026-02-15-bamboo-reminder-specs.md`
+- `docs/plans/2026-02-15-bamboo-reminder-design.md`
+
+**Project Context (auto-detected):**
+- Test runner: Jest (to be configured — greenfield project)
+- Component library: N/A (server-only, no UI)
+- API pattern: Express routes per CLAUDE.md
+- DB: Upstash Redis REST API
+- i18n: none
+- Key libraries: `@line/bot-sdk`, `express`, `@upstash/redis`, `dotenv`
+- Import aliases: none (plain JS, relative imports)
+- Mandatory patterns: YAGNI, single source file, mock at infrastructure boundaries
+
+---
+
+## Assumptions
+
+| ID | Assumption | Impact if Wrong | Slice |
+|----|-----------|-----------------|-------|
+| A1 | LINE Bot channel already created in LINE Developer Console | Can't get credentials to test | All |
+| A2 | Upstash Redis free account already created | Can't test state persistence | 1, 2 |
+| A3 | @line/bot-sdk v8+ supports push message and middleware | API may differ | 1, 4 |
+| A4 | Upstash REST client supports SET with NX and EX options | Duplicate prevention may need different approach | 2 |
+| A5 | Render free tier serves Express apps without special config | Deployment may need adjustments | 3 |
+
+---
+
+## Coverage Matrix
+
+| AC | Description | Task | Status |
+|----|-------------|------|--------|
+| S1-AC1 | Successful message send | Task 1.2, 1.3, 1.4 | pending |
+| S1-AC2 | Message rotates sequentially | Task 1.2 | pending |
+| S1-AC3 | Content wraps around | Task 1.2 | pending |
+| S1-AC4 | LINE API failure retries once | Task 1.3 | pending |
+| S1-AC5 | LINE API failure after retry returns error | Task 1.3 | pending |
+| S1-AC6 | Redis unavailable returns safe error | Task 1.4 | pending |
+| S1-AC7 | Missing env vars prevent server start | Task 1.1 | pending |
+| S2-AC1 | Duplicate request blocked | Task 2.1 | pending |
+| S2-AC2 | New day allows sending | Task 2.1 | pending |
+| S2-AC3 | Duplicate prevention is atomic | Task 2.1 | pending |
+| S2-AC4 | Sent keys auto-expire | Task 2.1 | pending |
+| S2-AC5 | Date computed in Asia/Taipei | Task 2.1 | pending |
+| S4-AC1 | Valid webhook accepted | Task 4.1 | pending |
+| S4-AC2 | Invalid signature rejected | Task 4.1 | pending |
+| S4-AC3 | Missing signature rejected | Task 4.1 | pending |
+| S3-AC1 | GitHub Actions triggers at correct time | Task 3.1 | pending |
+| S3-AC2 | Workflow handles cold start | Task 3.1 | pending |
+| S3-AC3 | Workflow reports failure | Task 3.1 | pending |
+| S3-AC4 | Manual trigger works | Task 3.1 | pending |
+
+---
+
+## Slice 0: Project Scaffolding
+
+### Task 0.1: Initialize project and create data files
+
+**Traces to:** Foundation for all slices
+**Files:**
+- Create: `package.json`
+- Create: `data/quotes.json`
+- Create: `data/deeds.json`
+- Update: `.env.example`
+- Update: `.gitignore`
+
+**Steps:**
+
+1. **Initialize package.json**
+
+```json
+{
+  "name": "bamboo-reminder",
+  "version": "1.0.0",
+  "description": "Daily good deed and donation reminder LINE Bot",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "@line/bot-sdk": "^9.0.0",
+    "@upstash/redis": "^1.34.0",
+    "express": "^4.21.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0"
+  }
+}
+```
+
+2. **Create data/quotes.json** with 30 quotes:
+
+```json
+[
+  { "text": "Many grains of rice make a bushel; many drops make a river.", "author": "Master Cheng Yen" },
+  { "text": "With gratitude, we gain blessings; with love, we gain wisdom.", "author": "Master Cheng Yen" },
+  { "text": "A kind word can warm three winter months.", "author": "Japanese Proverb" },
+  { "text": "The best time to plant a tree was twenty years ago. The second best time is now.", "author": "Chinese Proverb" },
+  { "text": "If you light a lamp for someone, it will also brighten your own path.", "author": "Buddhist Saying" },
+  { "text": "Do not dwell in the past, do not dream of the future, concentrate the mind on the present moment.", "author": "Buddha" },
+  { "text": "Thousands of candles can be lit from a single candle, and the life of the candle will not be shortened.", "author": "Buddha" },
+  { "text": "An ounce of practice is worth more than tons of preaching.", "author": "Mahatma Gandhi" },
+  { "text": "No act of kindness, no matter how small, is ever wasted.", "author": "Aesop" },
+  { "text": "We make a living by what we get, but we make a life by what we give.", "author": "Winston Churchill" },
+  { "text": "The fragrance always stays in the hand that gives the rose.", "author": "Hada Bejar" },
+  { "text": "When you are kind to others, it not only changes you, it changes the world.", "author": "Harold Kushner" },
+  { "text": "Happiness is not something ready-made. It comes from your own actions.", "author": "Dalai Lama" },
+  { "text": "In a gentle way, you can shake the world.", "author": "Mahatma Gandhi" },
+  { "text": "The purpose of life is not to be happy. It is to be useful, to be honorable, to be compassionate.", "author": "Ralph Waldo Emerson" },
+  { "text": "Giving is not just about making a donation. It is about making a difference.", "author": "Kathy Calvin" },
+  { "text": "Even a small star shines in the darkness.", "author": "Finnish Proverb" },
+  { "text": "The greatest good you can do for another is not just share your riches, but reveal to them their own.", "author": "Benjamin Disraeli" },
+  { "text": "Love and compassion are necessities, not luxuries. Without them, humanity cannot survive.", "author": "Dalai Lama" },
+  { "text": "One good deed has many claimants.", "author": "Yiddish Proverb" },
+  { "text": "To understand everything is to forgive everything.", "author": "Buddha" },
+  { "text": "What we have done for ourselves alone dies with us; what we have done for others and the world remains.", "author": "Albert Pike" },
+  { "text": "The simplest acts of kindness are by far more powerful than a thousand heads bowing in prayer.", "author": "Mahatma Gandhi" },
+  { "text": "When we give cheerfully and accept gratefully, everyone is blessed.", "author": "Maya Angelou" },
+  { "text": "Compassion is the basis of morality.", "author": "Arthur Schopenhauer" },
+  { "text": "Every charitable act is a stepping stone toward heaven.", "author": "Henry Ward Beecher" },
+  { "text": "Those who bring sunshine to the lives of others cannot keep it from themselves.", "author": "J.M. Barrie" },
+  { "text": "Real generosity is doing something nice for someone who will never find out.", "author": "Frank A. Clark" },
+  { "text": "Life is mostly froth and bubble; two things stand like stone: kindness in another's trouble, courage in your own.", "author": "Adam Lindsay Gordon" },
+  { "text": "Save fifty cents each day; the intent of a good heart, accumulated daily, becomes immeasurable.", "author": "Master Cheng Yen" }
+]
+```
+
+3. **Create data/deeds.json** with 30 deeds:
+
+```json
+[
+  { "text": "Send a thank-you message to someone who helped you this week." },
+  { "text": "Compliment a coworker on something specific they did well." },
+  { "text": "Hold the door open for the next three people behind you." },
+  { "text": "Call a family member you haven't spoken to in a while." },
+  { "text": "Leave a positive review for a local business you enjoy." },
+  { "text": "Offer to help a colleague with a task they're struggling with." },
+  { "text": "Write a handwritten note of appreciation for someone." },
+  { "text": "Donate an item you no longer need to someone who could use it." },
+  { "text": "Smile and greet a stranger today." },
+  { "text": "Let someone go ahead of you in line." },
+  { "text": "Share a useful article or resource with a friend." },
+  { "text": "Pick up a piece of litter you see on your walk today." },
+  { "text": "Send an encouraging message to someone going through a tough time." },
+  { "text": "Prepare a small treat or snack for your family or coworkers." },
+  { "text": "Listen fully to someone today without interrupting." },
+  { "text": "Tip a little extra at a restaurant or cafe." },
+  { "text": "Forgive someone who wronged you — let go of the resentment." },
+  { "text": "Teach someone a skill you know well." },
+  { "text": "Send a message to an old friend just to say you're thinking of them." },
+  { "text": "Offer your seat to someone on public transport." },
+  { "text": "Water a plant or tend to something living today." },
+  { "text": "Say 'please' and 'thank you' with extra sincerity today." },
+  { "text": "Donate to a cause you care about — even a small amount counts." },
+  { "text": "Write down three things you're grateful for today." },
+  { "text": "Check in on a neighbor, especially if they live alone." },
+  { "text": "Bring reusable bags or containers to reduce waste today." },
+  { "text": "Give someone the benefit of the doubt today." },
+  { "text": "Share your umbrella or offer help when it rains." },
+  { "text": "Spend 5 minutes tidying a shared space (kitchen, office, hallway)." },
+  { "text": "End the day by reflecting on one kind thing someone did for you." }
+]
+```
+
+4. **Update .env.example**:
+
+```
+LINE_CHANNEL_ACCESS_TOKEN=your-long-lived-v2-token   # From LINE Developer Console
+LINE_CHANNEL_SECRET=your-channel-secret-hex-string    # From LINE Developer Console
+LINE_USER_ID=Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx        # 33-char string starting with 'U'
+UPSTASH_REDIS_REST_URL=https://xxx.upstash.io         # From Upstash console
+UPSTASH_REDIS_REST_TOKEN=your-upstash-rest-token      # From Upstash console
+PORT=3000                                              # Optional, defaults to 3000
+```
+
+5. **Update .gitignore** — add `node_modules/` and `coverage/` if not present.
+
+6. **Run `npm install`** to generate lock file.
+
+7. **Commit:** "Add project scaffolding, data files, and dependencies"
+
+---
+
+## Slice 1: User receives daily inspiration message
+
+### Task 1.1: Env validation on startup
+
+**Traces to:** S1-AC7
+**Assumes:** A1 — LINE Bot credentials exist
+**Files:**
+- Create: `src/index.js` (initial version with validation only)
+- Create: `src/__tests__/index.test.js`
+
+**Steps:**
+
+1. **Write failing test:**
+
+```javascript
+// src/__tests__/index.test.js
+const REQUIRED_VARS = [
+  'LINE_CHANNEL_ACCESS_TOKEN',
+  'LINE_CHANNEL_SECRET',
+  'LINE_USER_ID',
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
+];
+
+describe('Env validation', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env = {
+      ...originalEnv,
+      LINE_CHANNEL_ACCESS_TOKEN: 'test-token',
+      LINE_CHANNEL_SECRET: 'test-secret',
+      LINE_USER_ID: 'U1234567890abcdef1234567890abcdef',
+      UPSTASH_REDIS_REST_URL: 'https://test.upstash.io',
+      UPSTASH_REDIS_REST_TOKEN: 'test-redis-token',
+      PORT: '3000',
+    };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  test('S1-AC7: exits with error when LINE_CHANNEL_ACCESS_TOKEN is missing', () => {
+    delete process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    const mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit called');
+    });
+    const mockError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => require('../index')).toThrow('process.exit called');
+    expect(mockError).toHaveBeenCalledWith(
+      expect.stringContaining('LINE_CHANNEL_ACCESS_TOKEN')
+    );
+
+    mockExit.mockRestore();
+    mockError.mockRestore();
+  });
+
+  test('S1-AC7: exits listing all missing variables', () => {
+    delete process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    const mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit called');
+    });
+    const mockError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => require('../index')).toThrow('process.exit called');
+    expect(mockError).toHaveBeenCalledWith(
+      expect.stringContaining('LINE_CHANNEL_ACCESS_TOKEN')
+    );
+    expect(mockError).toHaveBeenCalledWith(
+      expect.stringContaining('UPSTASH_REDIS_REST_URL')
+    );
+
+    mockExit.mockRestore();
+    mockError.mockRestore();
+  });
+
+  test('server starts when all env vars present', () => {
+    const mockListen = jest.fn();
+    jest.mock('express', () => {
+      const app = {
+        get: jest.fn(),
+        post: jest.fn(),
+        listen: mockListen,
+        use: jest.fn(),
+      };
+      return jest.fn(() => app);
+    });
+    jest.mock('@line/bot-sdk');
+    jest.mock('@upstash/redis');
+
+    expect(() => require('../index')).not.toThrow();
+  });
+});
+```
+
+2. **Verify test fails** (no src/index.js implementation yet).
+
+3. **Implement** `src/index.js` (initial skeleton):
+
+```javascript
+require('dotenv').config();
+
+const REQUIRED_VARS = [
+  'LINE_CHANNEL_ACCESS_TOKEN',
+  'LINE_CHANNEL_SECRET',
+  'LINE_USER_ID',
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
+];
+
+const missing = REQUIRED_VARS.filter((v) => !process.env[v]);
+if (missing.length > 0) {
+  console.error(`Missing required environment variables: ${missing.join(', ')}`);
+  process.exit(1);
+}
+
+const express = require('express');
+const app = express();
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Bamboo Bank listening on port ${PORT}`));
+
+module.exports = app;
+```
+
+4. **Verify tests pass.**
+
+5. **Commit:** "Add env validation on startup (S1-AC7)"
+
+---
+
+### Task 1.2: Message formatting function
+
+**Traces to:** S1-AC1, S1-AC2, S1-AC3
+**Assumes:** A1 — data files exist with correct schema
+**Files:**
+- Update: `src/index.js` (add formatMessage function)
+- Update: `src/__tests__/index.test.js`
+
+**Steps:**
+
+1. **Write failing tests:**
+
+```javascript
+// Add to src/__tests__/index.test.js
+
+const quotes = require('../../data/quotes.json');
+const deeds = require('../../data/deeds.json');
+
+// Helper: extract formatMessage for testing
+// We'll export it from index.js for testability
+describe('formatMessage', () => {
+  let formatMessage;
+
+  beforeAll(() => {
+    // Set env vars before requiring
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test';
+    process.env.LINE_CHANNEL_SECRET = 'test';
+    process.env.LINE_USER_ID = 'U1234567890abcdef1234567890abcdef';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
+
+    jest.mock('express', () => {
+      const app = { get: jest.fn(), post: jest.fn(), listen: jest.fn(), use: jest.fn() };
+      return jest.fn(() => app);
+    });
+    jest.mock('@line/bot-sdk');
+    jest.mock('@upstash/redis');
+
+    const mod = require('../index');
+    formatMessage = mod.formatMessage;
+  });
+
+  test('S1-AC1: includes quote, deed, donation reminder, and day number', () => {
+    const msg = formatMessage(quotes[0], deeds[0], 1);
+
+    expect(msg).toContain(quotes[0].text);
+    expect(msg).toContain(quotes[0].author);
+    expect(msg).toContain(deeds[0].text);
+    expect(msg).toContain('Save your 50 cents today');
+    expect(msg).toContain('Day 1');
+  });
+
+  test('S1-AC2: uses correct quote and deed for dayCount 5', () => {
+    const quoteIndex = 5 % quotes.length;
+    const deedIndex = 5 % deeds.length;
+    const msg = formatMessage(quotes[quoteIndex], deeds[deedIndex], 6);
+
+    expect(msg).toContain(quotes[quoteIndex].text);
+    expect(msg).toContain(deeds[deedIndex].text);
+    expect(msg).toContain('Day 6');
+  });
+
+  test('S1-AC3: wraps around after exhausting items', () => {
+    const quoteIndex = 30 % quotes.length; // = 0
+    const msg = formatMessage(quotes[quoteIndex], deeds[0], 31);
+
+    expect(msg).toContain(quotes[0].text);
+    expect(msg).toContain('Day 31');
+  });
+});
+```
+
+2. **Verify tests fail.**
+
+3. **Implement** — add to `src/index.js`:
+
+```javascript
+function formatMessage(quote, deed, dayCount) {
+  return [
+    `🎋 Bamboo Bank — Day ${dayCount}`,
+    '',
+    `"${quote.text}"`,
+    ` — ${quote.author}`,
+    '',
+    `💡 Today's good deed:`,
+    `   ${deed.text}`,
+    '',
+    `🪙 Save your 50 cents today.`,
+    `   Small daily kindness accumulates.`,
+  ].join('\n');
+}
+
+module.exports.formatMessage = formatMessage;
+```
+
+4. **Verify tests pass.**
+
+5. **Commit:** "Add message formatting with sequential rotation (S1-AC1, AC2, AC3)"
+
+---
+
+### Task 1.3: LINE push message with retry
+
+**Traces to:** S1-AC1, S1-AC4, S1-AC5
+**Assumes:** A3 — @line/bot-sdk v9 push message API
+**Tools:** Context7 (@line/bot-sdk push message API)
+**Files:**
+- Update: `src/index.js` (add pushMessage function)
+- Update: `src/__tests__/index.test.js`
+
+**Steps:**
+
+1. **Write failing tests:**
+
+```javascript
+// Add to src/__tests__/index.test.js
+
+describe('pushMessage', () => {
+  let pushMessage;
+  let mockPush;
+
+  beforeAll(() => {
+    jest.resetModules();
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
+    process.env.LINE_CHANNEL_SECRET = 'test-secret';
+    process.env.LINE_USER_ID = 'U1234567890abcdef1234567890abcdef';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
+
+    mockPush = jest.fn();
+    jest.mock('@line/bot-sdk', () => ({
+      messagingApi: {
+        MessagingApiClient: jest.fn(() => ({ pushMessage: mockPush })),
+      },
+      middleware: jest.fn(() => (req, res, next) => next()),
+    }));
+    jest.mock('express', () => {
+      const app = { get: jest.fn(), post: jest.fn(), listen: jest.fn(), use: jest.fn() };
+      return jest.fn(() => app);
+    });
+    jest.mock('@upstash/redis');
+
+    const mod = require('../index');
+    pushMessage = mod.pushMessage;
+  });
+
+  beforeEach(() => {
+    mockPush.mockReset();
+  });
+
+  test('S1-AC1: sends push message to configured user', async () => {
+    mockPush.mockResolvedValue({});
+
+    await pushMessage('Hello World');
+
+    expect(mockPush).toHaveBeenCalledWith({
+      to: 'U1234567890abcdef1234567890abcdef',
+      messages: [{ type: 'text', text: 'Hello World' }],
+    });
+  });
+
+  test('S1-AC4: retries once after 1s on failure', async () => {
+    mockPush
+      .mockRejectedValueOnce(new Error('LINE API error'))
+      .mockResolvedValueOnce({});
+
+    const start = Date.now();
+    await pushMessage('Hello');
+    const elapsed = Date.now() - start;
+
+    expect(mockPush).toHaveBeenCalledTimes(2);
+    expect(elapsed).toBeGreaterThanOrEqual(900); // ~1s delay
+  });
+
+  test('S1-AC5: throws after retry also fails', async () => {
+    mockPush
+      .mockRejectedValueOnce(new Error('fail 1'))
+      .mockRejectedValueOnce(new Error('fail 2'));
+
+    await expect(pushMessage('Hello')).rejects.toThrow('fail 2');
+    expect(mockPush).toHaveBeenCalledTimes(2);
+  });
+});
+```
+
+2. **Verify tests fail.**
+
+3. **Implement** — add to `src/index.js`:
+
+```javascript
+const { messagingApi } = require('@line/bot-sdk');
+
+const lineClient = new messagingApi.MessagingApiClient({
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+});
+
+async function pushMessage(text) {
+  const message = {
+    to: process.env.LINE_USER_ID,
+    messages: [{ type: 'text', text }],
+  };
+  try {
+    return await lineClient.pushMessage(message);
+  } catch (err) {
+    await new Promise((r) => setTimeout(r, 1000));
+    return await lineClient.pushMessage(message);
+  }
+}
+
+module.exports.pushMessage = pushMessage;
+```
+
+4. **Verify tests pass.**
+
+5. **Commit:** "Add LINE push message with single retry (S1-AC1, AC4, AC5)"
+
+---
+
+### Task 1.4: GET /send endpoint
+
+**Traces to:** S1-AC1, S1-AC6
+**Assumes:** A2 — Upstash Redis account exists, A4 — SET NX supported
+**Tools:** Context7 (@upstash/redis REST client)
+**Files:**
+- Update: `src/index.js` (add /send route)
+- Update: `src/__tests__/index.test.js`
+
+**Steps:**
+
+1. **Write failing tests:**
+
+```javascript
+// src/__tests__/send.test.js
+const request = require('supertest');
+
+describe('GET /send', () => {
+  let app;
+  let mockRedisSet;
+  let mockRedisIncr;
+  let mockPush;
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
+    process.env.LINE_CHANNEL_SECRET = 'test-secret';
+    process.env.LINE_USER_ID = 'U1234567890abcdef1234567890abcdef';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
+
+    mockRedisSet = jest.fn();
+    mockRedisIncr = jest.fn();
+    mockPush = jest.fn().mockResolvedValue({});
+
+    jest.mock('@upstash/redis', () => ({
+      Redis: jest.fn(() => ({
+        set: mockRedisSet,
+        incr: mockRedisIncr,
+      })),
+    }));
+
+    jest.mock('@line/bot-sdk', () => ({
+      messagingApi: {
+        MessagingApiClient: jest.fn(() => ({ pushMessage: mockPush })),
+      },
+      middleware: jest.fn(() => (req, res, next) => next()),
+    }));
+
+    app = require('../index');
+  });
+
+  test('S1-AC1: sends message and returns { sent: true, dayCount }', async () => {
+    mockRedisSet.mockResolvedValue('OK'); // SET NX succeeded
+    mockRedisIncr.mockResolvedValue(1);   // dayCount = 1
+
+    const res = await request(app).get('/send');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ sent: true, dayCount: 1 });
+    expect(mockPush).toHaveBeenCalledTimes(1);
+  });
+
+  test('S1-AC1: message contains quote, deed, and day number', async () => {
+    mockRedisSet.mockResolvedValue('OK');
+    mockRedisIncr.mockResolvedValue(1);
+
+    await request(app).get('/send');
+
+    const sentText = mockPush.mock.calls[0][0].messages[0].text;
+    expect(sentText).toContain('Day 1');
+    expect(sentText).toContain('Save your 50 cents today');
+    expect(sentText).toContain('Bamboo Bank');
+  });
+
+  test('S1-AC6: returns 500 when Redis is unavailable', async () => {
+    mockRedisSet.mockRejectedValue(new Error('Redis connection failed'));
+
+    const res = await request(app).get('/send');
+
+    expect(res.status).toBe(500);
+    expect(res.body).toHaveProperty('error');
+    expect(mockPush).not.toHaveBeenCalled(); // Safe failure
+  });
+});
+```
+
+2. **Verify tests fail.**
+
+3. **Implement** — add to `src/index.js`:
+
+```javascript
+const { Redis } = require('@upstash/redis');
+const quotes = require('../data/quotes.json');
+const deeds = require('../data/deeds.json');
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+function getTaipeiDate() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+}
+
+app.get('/send', async (req, res) => {
+  try {
+    const today = getTaipeiDate();
+    const setResult = await redis.set(`sent:${today}`, '1', { nx: true, ex: 172800 });
+
+    if (!setResult) {
+      console.log(`SKIPPED already_sent date=${today}`);
+      return res.json({ sent: false, reason: 'already_sent' });
+    }
+
+    const dayCount = await redis.incr('dayCount');
+    const quote = quotes[(dayCount - 1) % quotes.length];
+    const deed = deeds[(dayCount - 1) % deeds.length];
+    const message = formatMessage(quote, deed, dayCount);
+
+    await pushMessage(message);
+
+    console.log(`SENT day=${dayCount} date=${today}`);
+    res.json({ sent: true, dayCount });
+  } catch (err) {
+    console.error(`ERROR ${new Date().toISOString()} ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+```
+
+4. **Verify tests pass.**
+
+5. **Commit:** "Add GET /send endpoint with Redis state (S1-AC1, S1-AC6)"
+
+---
+
+### Task 1.5: BDD Integration Test — Slice 1
+
+**Traces to:** S1-AC1 through S1-AC7
+**Type:** BDD
+**Files:**
+- Create: `src/__tests__/slice1.bdd.test.js`
+
+**Complete test code:**
+
+```javascript
+// src/__tests__/slice1.bdd.test.js
+const request = require('supertest');
+
+describe('Slice 1: User receives daily inspiration message', () => {
+  let app;
+  let mockRedisSet;
+  let mockRedisIncr;
+  let mockPush;
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
+    process.env.LINE_CHANNEL_SECRET = 'test-secret';
+    process.env.LINE_USER_ID = 'U1234567890abcdef1234567890abcdef';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
+
+    mockRedisSet = jest.fn().mockResolvedValue('OK');
+    mockRedisIncr = jest.fn().mockResolvedValue(1);
+    mockPush = jest.fn().mockResolvedValue({});
+
+    jest.mock('@upstash/redis', () => ({
+      Redis: jest.fn(() => ({
+        set: mockRedisSet,
+        incr: mockRedisIncr,
+      })),
+    }));
+
+    jest.mock('@line/bot-sdk', () => ({
+      messagingApi: {
+        MessagingApiClient: jest.fn(() => ({ pushMessage: mockPush })),
+      },
+      middleware: jest.fn(() => (req, res, next) => next()),
+    }));
+
+    app = require('../index');
+  });
+
+  describe('AC1: Successful message send', () => {
+    it('Given valid credentials and data, When GET /send, Then sends formatted LINE message', async () => {
+      // Given: server running with valid credentials, dayCount = 0
+      mockRedisIncr.mockResolvedValue(1);
+
+      // When: GET /send
+      const res = await request(app).get('/send');
+
+      // Then: message sent with quote, deed, reminder, day number
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ sent: true, dayCount: 1 });
+      expect(mockPush).toHaveBeenCalledTimes(1);
+
+      const text = mockPush.mock.calls[0][0].messages[0].text;
+      expect(text).toContain('Day 1');
+      expect(text).toContain('Save your 50 cents today');
+      expect(text).toMatch(/".+"/); // Contains a quote
+    });
+  });
+
+  describe('AC2: Message rotates sequentially', () => {
+    it('Given dayCount is 5, When GET /send, Then uses quote[5] and deed[5]', async () => {
+      // Given: dayCount will be 6 after INCR
+      mockRedisIncr.mockResolvedValue(6);
+
+      // When
+      const res = await request(app).get('/send');
+
+      // Then: uses index 5 (dayCount-1 % 30)
+      const quotes = require('../../data/quotes.json');
+      const deeds = require('../../data/deeds.json');
+      const text = mockPush.mock.calls[0][0].messages[0].text;
+      expect(text).toContain(quotes[5].text);
+      expect(text).toContain(deeds[5].text);
+      expect(text).toContain('Day 6');
+    });
+  });
+
+  describe('AC3: Content wraps around', () => {
+    it('Given dayCount is 30, When GET /send, Then wraps to quote[0]', async () => {
+      // Given: dayCount = 31 after INCR, 30 % 30 = 0
+      mockRedisIncr.mockResolvedValue(31);
+
+      // When
+      await request(app).get('/send');
+
+      // Then
+      const quotes = require('../../data/quotes.json');
+      const text = mockPush.mock.calls[0][0].messages[0].text;
+      expect(text).toContain(quotes[0].text);
+      expect(text).toContain('Day 31');
+    });
+  });
+
+  describe('AC5: LINE API failure after retry returns error', () => {
+    it('Given LINE API fails twice, When GET /send, Then returns 500', async () => {
+      // Given
+      mockPush
+        .mockRejectedValueOnce(new Error('LINE fail 1'))
+        .mockRejectedValueOnce(new Error('LINE fail 2'));
+
+      // When
+      const res = await request(app).get('/send');
+
+      // Then
+      expect(res.status).toBe(500);
+      expect(res.body.error).toContain('LINE fail 2');
+    });
+  });
+
+  describe('AC6: Redis unavailable returns safe error', () => {
+    it('Given Redis unreachable, When GET /send, Then no message sent, returns 500', async () => {
+      // Given
+      mockRedisSet.mockRejectedValue(new Error('Redis down'));
+
+      // When
+      const res = await request(app).get('/send');
+
+      // Then
+      expect(res.status).toBe(500);
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('AC7: Missing env vars prevent start', () => {
+    it('Given LINE_CHANNEL_ACCESS_TOKEN is missing, When server starts, Then exits', () => {
+      jest.resetModules();
+      delete process.env.LINE_CHANNEL_ACCESS_TOKEN;
+
+      const mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {
+        throw new Error('exit');
+      });
+      const mockError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(() => require('../index')).toThrow('exit');
+      expect(mockError).toHaveBeenCalledWith(
+        expect.stringContaining('LINE_CHANNEL_ACCESS_TOKEN')
+      );
+
+      mockExit.mockRestore();
+      mockError.mockRestore();
+    });
+  });
+});
+```
+
+**Commit:** "Add BDD integration tests for Slice 1 (S1-AC1 through AC7)"
+
+---
+
+## Slice 2: User receives exactly one message per day
+
+### Task 2.1: Duplicate prevention and timezone handling
+
+**Traces to:** S2-AC1, S2-AC2, S2-AC3, S2-AC4, S2-AC5
+**Assumes:** A4 — Upstash supports SET NX EX
+**Files:**
+- Update: `src/__tests__/send.test.js` (add duplicate tests)
+- Logic already implemented in Task 1.4 — this task adds tests
+
+**Note:** The SET NX logic is already in the /send handler from Task 1.4. This task focuses on testing the duplicate prevention behavior and timezone correctness.
+
+**Steps:**
+
+1. **Write tests:**
+
+```javascript
+// Add to src/__tests__/send.test.js
+
+describe('Duplicate prevention (Slice 2)', () => {
+  let app;
+  let mockRedisSet;
+  let mockRedisIncr;
+  let mockPush;
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
+    process.env.LINE_CHANNEL_SECRET = 'test-secret';
+    process.env.LINE_USER_ID = 'U1234567890abcdef1234567890abcdef';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
+
+    mockRedisSet = jest.fn();
+    mockRedisIncr = jest.fn();
+    mockPush = jest.fn().mockResolvedValue({});
+
+    jest.mock('@upstash/redis', () => ({
+      Redis: jest.fn(() => ({
+        set: mockRedisSet,
+        incr: mockRedisIncr,
+      })),
+    }));
+
+    jest.mock('@line/bot-sdk', () => ({
+      messagingApi: {
+        MessagingApiClient: jest.fn(() => ({ pushMessage: mockPush })),
+      },
+      middleware: jest.fn(() => (req, res, next) => next()),
+    }));
+
+    app = require('../index');
+  });
+
+  test('S2-AC1: blocks duplicate request on same day', async () => {
+    mockRedisSet.mockResolvedValue(null); // SET NX returns null = key exists
+
+    const res = await request(app).get('/send');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ sent: false, reason: 'already_sent' });
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  test('S2-AC2: allows sending on new day', async () => {
+    mockRedisSet.mockResolvedValue('OK'); // SET NX succeeds = new day
+    mockRedisIncr.mockResolvedValue(2);
+
+    const res = await request(app).get('/send');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ sent: true, dayCount: 2 });
+    expect(mockPush).toHaveBeenCalledTimes(1);
+  });
+
+  test('S2-AC4: SET NX uses 48-hour expiry', async () => {
+    mockRedisSet.mockResolvedValue('OK');
+    mockRedisIncr.mockResolvedValue(1);
+
+    await request(app).get('/send');
+
+    expect(mockRedisSet).toHaveBeenCalledWith(
+      expect.stringMatching(/^sent:\d{4}-\d{2}-\d{2}$/),
+      '1',
+      { nx: true, ex: 172800 }
+    );
+  });
+
+  test('S2-AC5: date key uses Asia/Taipei timezone', async () => {
+    mockRedisSet.mockResolvedValue('OK');
+    mockRedisIncr.mockResolvedValue(1);
+
+    await request(app).get('/send');
+
+    // Verify the key format is sent:YYYY-MM-DD
+    const setCall = mockRedisSet.mock.calls[0];
+    const key = setCall[0];
+    expect(key).toMatch(/^sent:\d{4}-\d{2}-\d{2}$/);
+  });
+});
+```
+
+2. **Verify tests pass** (logic already implemented in Task 1.4).
+
+3. **Commit:** "Add duplicate prevention tests (S2-AC1 through AC5)"
+
+---
+
+### Task 2.2: BDD Integration Test — Slice 2
+
+**Traces to:** S2-AC1 through S2-AC5
+**Type:** BDD
+**Files:**
+- Create: `src/__tests__/slice2.bdd.test.js`
+
+**Complete test code:**
+
+```javascript
+// src/__tests__/slice2.bdd.test.js
+const request = require('supertest');
+
+describe('Slice 2: User receives exactly one message per day', () => {
+  let app;
+  let mockRedisSet;
+  let mockRedisIncr;
+  let mockPush;
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
+    process.env.LINE_CHANNEL_SECRET = 'test-secret';
+    process.env.LINE_USER_ID = 'U1234567890abcdef1234567890abcdef';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
+
+    mockRedisSet = jest.fn();
+    mockRedisIncr = jest.fn();
+    mockPush = jest.fn().mockResolvedValue({});
+
+    jest.mock('@upstash/redis', () => ({
+      Redis: jest.fn(() => ({
+        set: mockRedisSet,
+        incr: mockRedisIncr,
+      })),
+    }));
+
+    jest.mock('@line/bot-sdk', () => ({
+      messagingApi: {
+        MessagingApiClient: jest.fn(() => ({ pushMessage: mockPush })),
+      },
+      middleware: jest.fn(() => (req, res, next) => next()),
+    }));
+
+    app = require('../index');
+  });
+
+  describe('AC1: Duplicate request on same day is blocked', () => {
+    it('Given message already sent today, When GET /send again, Then no message sent', async () => {
+      // Given: sent:<today> key already exists
+      mockRedisSet.mockResolvedValue(null);
+
+      // When
+      const res = await request(app).get('/send');
+
+      // Then
+      expect(res.body).toEqual({ sent: false, reason: 'already_sent' });
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('AC2: New day allows sending again', () => {
+    it('Given yesterday was sent but today is new, When GET /send, Then message sent', async () => {
+      // Given: today's key doesn't exist (SET NX succeeds)
+      mockRedisSet.mockResolvedValue('OK');
+      mockRedisIncr.mockResolvedValue(5);
+
+      // When
+      const res = await request(app).get('/send');
+
+      // Then
+      expect(res.body).toEqual({ sent: true, dayCount: 5 });
+      expect(mockPush).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('AC3: Duplicate prevention is atomic', () => {
+    it('Given today key does not exist, When two requests race, Then only one succeeds', async () => {
+      // Given: first SET NX succeeds, second returns null (atomic)
+      mockRedisSet
+        .mockResolvedValueOnce('OK')   // First request wins
+        .mockResolvedValueOnce(null);   // Second request blocked
+      mockRedisIncr.mockResolvedValue(1);
+
+      // When: two simultaneous requests
+      const [res1, res2] = await Promise.all([
+        request(app).get('/send'),
+        request(app).get('/send'),
+      ]);
+
+      // Then: exactly one sent
+      const results = [res1.body, res2.body];
+      const sent = results.filter((r) => r.sent === true);
+      const skipped = results.filter((r) => r.reason === 'already_sent');
+      expect(sent).toHaveLength(1);
+      expect(skipped).toHaveLength(1);
+      expect(mockPush).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('AC4: Sent keys auto-expire', () => {
+    it('Given SET NX is called, Then expiry is 172800 seconds (48 hours)', async () => {
+      // Given & When
+      mockRedisSet.mockResolvedValue('OK');
+      mockRedisIncr.mockResolvedValue(1);
+      await request(app).get('/send');
+
+      // Then
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        expect.any(String),
+        '1',
+        { nx: true, ex: 172800 }
+      );
+    });
+  });
+
+  describe('AC5: Date computed in Asia/Taipei timezone', () => {
+    it('Given server time, When computing date, Then uses Asia/Taipei', async () => {
+      mockRedisSet.mockResolvedValue('OK');
+      mockRedisIncr.mockResolvedValue(1);
+      await request(app).get('/send');
+
+      // Key should be sent:YYYY-MM-DD in Taipei timezone
+      const key = mockRedisSet.mock.calls[0][0];
+      expect(key).toMatch(/^sent:\d{4}-\d{2}-\d{2}$/);
+    });
+  });
+});
+```
+
+**Commit:** "Add BDD integration tests for Slice 2 (S2-AC1 through AC5)"
+
+---
+
+## Slice 4: Server validates webhook signatures
+
+### Task 4.1: Webhook endpoint with signature validation
+
+**Traces to:** S4-AC1, S4-AC2, S4-AC3
+**Assumes:** A3 — @line/bot-sdk middleware validates X-Line-Signature
+**Tools:** Context7 (@line/bot-sdk middleware)
+**Files:**
+- Update: `src/index.js` (add /webhook route with middleware)
+- Create: `src/__tests__/webhook.test.js`
+
+**Steps:**
+
+1. **Write failing tests:**
+
+```javascript
+// src/__tests__/webhook.test.js
+const request = require('supertest');
+const crypto = require('crypto');
+
+describe('POST /webhook (Slice 4)', () => {
+  let app;
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
+    process.env.LINE_CHANNEL_SECRET = 'test-secret';
+    process.env.LINE_USER_ID = 'U1234567890abcdef1234567890abcdef';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
+  });
+
+  describe('With real signature validation', () => {
+    beforeEach(() => {
+      jest.mock('@upstash/redis', () => ({
+        Redis: jest.fn(() => ({ set: jest.fn(), incr: jest.fn() })),
+      }));
+
+      jest.mock('@line/bot-sdk', () => {
+        const actual = jest.requireActual('@line/bot-sdk');
+        return {
+          messagingApi: {
+            MessagingApiClient: jest.fn(() => ({ pushMessage: jest.fn() })),
+          },
+          middleware: actual.middleware,
+        };
+      });
+
+      app = require('../index');
+    });
+
+    test('S4-AC1: valid signature returns 200', async () => {
+      const body = JSON.stringify({ events: [] });
+      const signature = crypto
+        .createHmac('SHA256', 'test-secret')
+        .update(body)
+        .digest('base64');
+
+      const res = await request(app)
+        .post('/webhook')
+        .set('Content-Type', 'application/json')
+        .set('X-Line-Signature', signature)
+        .send(body);
+
+      expect(res.status).toBe(200);
+    });
+
+    test('S4-AC2: invalid signature returns 401', async () => {
+      const res = await request(app)
+        .post('/webhook')
+        .set('Content-Type', 'application/json')
+        .set('X-Line-Signature', 'invalid-signature')
+        .send(JSON.stringify({ events: [] }));
+
+      expect([401, 403]).toContain(res.status);
+    });
+
+    test('S4-AC3: missing signature returns 401', async () => {
+      const res = await request(app)
+        .post('/webhook')
+        .set('Content-Type', 'application/json')
+        .send(JSON.stringify({ events: [] }));
+
+      expect([401, 403]).toContain(res.status);
+    });
+  });
+});
+```
+
+2. **Verify tests fail.**
+
+3. **Implement** — add to `src/index.js`:
+
+```javascript
+const { middleware } = require('@line/bot-sdk');
+
+const lineMiddleware = middleware({
+  channelSecret: process.env.LINE_CHANNEL_SECRET,
+});
+
+app.post('/webhook', lineMiddleware, (req, res) => {
+  res.sendStatus(200);
+});
+```
+
+4. **Verify tests pass.**
+
+5. **Commit:** "Add webhook endpoint with signature validation (S4-AC1 through AC3)"
+
+---
+
+### Task 4.2: BDD Integration Test — Slice 4
+
+**Traces to:** S4-AC1 through S4-AC3
+**Type:** BDD
+**Files:**
+- Create: `src/__tests__/slice4.bdd.test.js`
+
+**Complete test code:**
+
+```javascript
+// src/__tests__/slice4.bdd.test.js
+const request = require('supertest');
+const crypto = require('crypto');
+
+describe('Slice 4: Server validates webhook signatures', () => {
+  let app;
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
+    process.env.LINE_CHANNEL_SECRET = 'test-webhook-secret';
+    process.env.LINE_USER_ID = 'U1234567890abcdef1234567890abcdef';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
+
+    jest.mock('@upstash/redis', () => ({
+      Redis: jest.fn(() => ({ set: jest.fn(), incr: jest.fn() })),
+    }));
+
+    jest.mock('@line/bot-sdk', () => {
+      const actual = jest.requireActual('@line/bot-sdk');
+      return {
+        messagingApi: {
+          MessagingApiClient: jest.fn(() => ({ pushMessage: jest.fn() })),
+        },
+        middleware: actual.middleware,
+      };
+    });
+
+    app = require('../index');
+  });
+
+  describe('AC1: Valid LINE webhook is accepted', () => {
+    it('Given valid channel secret, When LINE sends POST with valid signature, Then returns 200', async () => {
+      // Given: server running with LINE_CHANNEL_SECRET
+      const body = JSON.stringify({ events: [], destination: 'U1234' });
+      const signature = crypto
+        .createHmac('SHA256', 'test-webhook-secret')
+        .update(body)
+        .digest('base64');
+
+      // When
+      const res = await request(app)
+        .post('/webhook')
+        .set('Content-Type', 'application/json')
+        .set('X-Line-Signature', signature)
+        .send(body);
+
+      // Then
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe('AC2: Invalid webhook signature is rejected', () => {
+    it('Given valid server, When POST with wrong signature, Then returns 401/403', async () => {
+      // When
+      const res = await request(app)
+        .post('/webhook')
+        .set('Content-Type', 'application/json')
+        .set('X-Line-Signature', 'totally-wrong-signature')
+        .send(JSON.stringify({ events: [] }));
+
+      // Then
+      expect([401, 403]).toContain(res.status);
+    });
+  });
+
+  describe('AC3: Webhook without signature is rejected', () => {
+    it('Given valid server, When POST without X-Line-Signature, Then returns 401/403', async () => {
+      // When
+      const res = await request(app)
+        .post('/webhook')
+        .set('Content-Type', 'application/json')
+        .send(JSON.stringify({ events: [] }));
+
+      // Then
+      expect([401, 403]).toContain(res.status);
+    });
+  });
+});
+```
+
+**Commit:** "Add BDD integration tests for Slice 4 (S4-AC1 through AC3)"
+
+---
+
+## Slice 3: Message arrives automatically at lunchtime
+
+### Task 3.1: GitHub Actions workflow file
+
+**Traces to:** S3-AC1, S3-AC2, S3-AC3, S3-AC4
+**Files:**
+- Create: `.github/workflows/daily-reminder.yml`
+
+**Note:** This slice is infrastructure (YAML config), not application code. Tests are manual verification via `workflow_dispatch`.
+
+**Steps:**
+
+1. **Create the workflow file:**
+
+```yaml
+# .github/workflows/daily-reminder.yml
+name: Daily Reminder
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # 4 AM UTC = 12 PM Asia/Taipei
+  workflow_dispatch: {}    # Manual trigger for testing
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2     # Handles Render cold start (30-90s)
+    steps:
+      - name: Trigger daily message
+        run: |
+          response=$(curl -sf -w "\n%{http_code}" \
+            --connect-timeout 30 \
+            --max-time 90 \
+            "${{ secrets.RENDER_URL }}/send")
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | sed '$d')
+          echo "Status: $http_code"
+          echo "Response: $body"
+          if [ "$http_code" != "200" ]; then
+            echo "::error::Failed to send daily message (HTTP $http_code)"
+            exit 1
+          fi
+```
+
+2. **Verify:** YAML is valid, cron expression is correct (0 4 * * * = 4 AM UTC = 12 PM Taipei).
+
+3. **Manual verification plan** (after deployment):
+   - Trigger workflow manually via GitHub Actions UI (S3-AC4)
+   - Verify LINE message arrives (S3-AC4)
+   - Check workflow logs for status output (S3-AC3)
+   - Wait for next scheduled run to verify automatic trigger (S3-AC1)
+
+4. **Commit:** "Add GitHub Actions daily cron workflow (S3-AC1 through AC4)"
+
+---
+
+## Dependency Graph
+
+```
+Slice 0: Scaffolding
+  └── Task 0.1: project init + data files
+        │
+        ▼
+Slice 1: Core Message          Slice 4: Webhook
+  ├── Task 1.1: env validation   ├── Task 4.1: webhook + sig validation
+  ├── Task 1.2: formatting       └── Task 4.2: BDD test (Slice 4)
+  ├── Task 1.3: LINE push
+  ├── Task 1.4: /send endpoint
+  └── Task 1.5: BDD test (Slice 1)
+        │
+        ▼
+Slice 2: Duplicate Prevention
+  ├── Task 2.1: duplicate tests (logic from 1.4)
+  └── Task 2.2: BDD test (Slice 2)
+        │
+        ▼
+Slice 3: Automation
+  └── Task 3.1: GitHub Actions workflow
+
+Parallel: Slice 1 ∥ Slice 4 (independent)
+Sequential: Slice 0 → Slice 1 → Slice 2 → Slice 3
+```
+
+## Summary Statistics
+
+| Slice | Tasks | Tests | New Files | Modified Files |
+|-------|-------|-------|-----------|----------------|
+| 0. Scaffolding | 1 | 0 | 4 | 2 |
+| 1. Core Message | 5 | ~12 | 3 | 1 |
+| 2. Duplicate Prevention | 2 | ~7 | 1 | 1 |
+| 4. Webhook Validation | 2 | ~3 | 2 | 1 |
+| 3. Automation | 1 | 0 | 1 | 0 |
+| **Total** | **11** | **~22** | **11** | **5** |

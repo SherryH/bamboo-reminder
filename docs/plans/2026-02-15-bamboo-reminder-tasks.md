@@ -30,7 +30,7 @@
 |----|-----------|-----------------|-------|
 | A1 | LINE Bot channel already created in LINE Developer Console | Can't get credentials to test | All |
 | A2 | Upstash Redis free account already created | Can't test state persistence | 1, 2 |
-| A3 | @line/bot-sdk v8+ supports push message and middleware | API may differ | 1, 4 |
+| A3 | @line/bot-sdk v10+ supports push message and middleware | API may differ | 1, 4 |
 | A4 | Upstash REST client supports SET with NX and EX options | Duplicate prevention may need different approach | 2 |
 | A5 | Render free tier serves Express apps without special config | Deployment may need adjustments | 3 |
 
@@ -49,7 +49,7 @@
 | S1-AC7 | Missing env vars prevent server start | Task 1.1 | pending |
 | S2-AC1 | Duplicate request blocked | Task 2.1 | pending |
 | S2-AC2 | New day allows sending | Task 2.1 | pending |
-| S2-AC3 | Duplicate prevention is atomic | Task 2.1 | pending |
+| S2-AC3 | Duplicate prevention is atomic | Task 2.2 | pending |
 | S2-AC4 | Sent keys auto-expire | Task 2.1 | pending |
 | S2-AC5 | Date computed in Asia/Taipei | Task 2.1 | pending |
 | S4-AC1 | Valid webhook accepted | Task 4.1 | pending |
@@ -90,7 +90,7 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "@line/bot-sdk": "^9.0.0",
+    "@line/bot-sdk": "^10.0.0",
     "@upstash/redis": "^1.34.0",
     "express": "^4.21.0",
     "dotenv": "^16.4.0"
@@ -187,7 +187,9 @@ UPSTASH_REDIS_REST_TOKEN=your-upstash-rest-token      # From Upstash console
 PORT=3000                                              # Optional, defaults to 3000
 ```
 
-5. **Update .gitignore** — add `node_modules/` and `coverage/` if not present.
+5. **Update .gitignore** — add `node_modules/` and `coverage/` if not present. Remove stale `data/state.json` entry (no longer used — state is in Upstash Redis).
+
+   **Note:** Also ensure your local `.env` has all 5 required variables set (even dummy values for local testing). The current `.env` is missing `LINE_CHANNEL_SECRET`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN`.
 
 6. **Run `npm install`** to generate lock file.
 
@@ -319,7 +321,10 @@ const express = require('express');
 const app = express();
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Bamboo Bank listening on port ${PORT}`));
+
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Bamboo Bank listening on port ${PORT}`));
+}
 
 module.exports = app;
 ```
@@ -434,7 +439,7 @@ module.exports.formatMessage = formatMessage;
 ### Task 1.3: LINE push message with retry
 
 **Traces to:** S1-AC1, S1-AC4, S1-AC5
-**Assumes:** A3 — @line/bot-sdk v9 push message API
+**Assumes:** A3 — @line/bot-sdk v10 push message API
 **Tools:** Context7 (@line/bot-sdk push message API)
 **Files:**
 - Update: `src/index.js` (add pushMessage function)
@@ -555,7 +560,7 @@ module.exports.pushMessage = pushMessage;
 **Tools:** Context7 (@upstash/redis REST client)
 **Files:**
 - Update: `src/index.js` (add /send route)
-- Update: `src/__tests__/index.test.js`
+- Create: `src/__tests__/send.test.js`
 
 **Steps:**
 
@@ -787,6 +792,23 @@ describe('Slice 1: User receives daily inspiration message', () => {
     });
   });
 
+  describe('AC4: LINE API failure retries once', () => {
+    it('Given LINE API fails once then succeeds, When GET /send, Then returns success', async () => {
+      // Given
+      mockPush
+        .mockRejectedValueOnce(new Error('LINE fail 1'))
+        .mockResolvedValueOnce({});
+
+      // When
+      const res = await request(app).get('/send');
+
+      // Then: message still sent successfully after retry
+      expect(res.status).toBe(200);
+      expect(res.body.sent).toBe(true);
+      expect(mockPush).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('AC5: LINE API failure after retry returns error', () => {
     it('Given LINE API fails twice, When GET /send, Then returns 500', async () => {
       // Given
@@ -931,16 +953,30 @@ describe('Duplicate prevention (Slice 2)', () => {
     );
   });
 
-  test('S2-AC5: date key uses Asia/Taipei timezone', async () => {
+  test('S2-AC5: date key uses Asia/Taipei timezone, not UTC', async () => {
+    // Given: 2026-02-16 15:30 UTC = 2026-02-16 23:30 Taipei (same day)
+    // But:   2026-02-16 16:00 UTC = 2026-02-17 00:00 Taipei (next day!)
+    const realDate = Date;
+    // Set clock to 2026-02-16T16:00:00Z = 2026-02-17 00:00 Taipei
+    global.Date = class extends realDate {
+      constructor(...args) {
+        if (args.length === 0) return new realDate('2026-02-16T16:00:00Z');
+        return new realDate(...args);
+      }
+      static now() { return new realDate('2026-02-16T16:00:00Z').getTime(); }
+    };
+    global.Date.prototype = realDate.prototype;
+
     mockRedisSet.mockResolvedValue('OK');
     mockRedisIncr.mockResolvedValue(1);
 
     await request(app).get('/send');
 
-    // Verify the key format is sent:YYYY-MM-DD
-    const setCall = mockRedisSet.mock.calls[0];
-    const key = setCall[0];
-    expect(key).toMatch(/^sent:\d{4}-\d{2}-\d{2}$/);
+    // Key should be Taipei date (Feb 17), NOT UTC date (Feb 16)
+    const key = mockRedisSet.mock.calls[0][0];
+    expect(key).toBe('sent:2026-02-17');
+
+    global.Date = realDate;
   });
 });
 ```
@@ -1069,14 +1105,29 @@ describe('Slice 2: User receives exactly one message per day', () => {
   });
 
   describe('AC5: Date computed in Asia/Taipei timezone', () => {
-    it('Given server time, When computing date, Then uses Asia/Taipei', async () => {
+    it('Given UTC time past Taipei midnight, When computing date, Then uses Taipei date', async () => {
+      // Given: 2026-02-16T16:00:00Z = 2026-02-17 00:00 Taipei
+      const realDate = Date;
+      global.Date = class extends realDate {
+        constructor(...args) {
+          if (args.length === 0) return new realDate('2026-02-16T16:00:00Z');
+          return new realDate(...args);
+        }
+        static now() { return new realDate('2026-02-16T16:00:00Z').getTime(); }
+      };
+      global.Date.prototype = realDate.prototype;
+
       mockRedisSet.mockResolvedValue('OK');
       mockRedisIncr.mockResolvedValue(1);
+
+      // When
       await request(app).get('/send');
 
-      // Key should be sent:YYYY-MM-DD in Taipei timezone
+      // Then: key uses Taipei date (Feb 17), not UTC date (Feb 16)
       const key = mockRedisSet.mock.calls[0][0];
-      expect(key).toMatch(/^sent:\d{4}-\d{2}-\d{2}$/);
+      expect(key).toBe('sent:2026-02-17');
+
+      global.Date = realDate;
     });
   });
 });
@@ -1323,7 +1374,7 @@ jobs:
     steps:
       - name: Trigger daily message
         run: |
-          response=$(curl -sf -w "\n%{http_code}" \
+          response=$(curl -s -w "\n%{http_code}" \
             --connect-timeout 30 \
             --max-time 90 \
             "${{ secrets.RENDER_URL }}/send")
@@ -1385,4 +1436,28 @@ Sequential: Slice 0 → Slice 1 → Slice 2 → Slice 3
 | 2. Duplicate Prevention | 2 | ~7 | 1 | 1 |
 | 4. Webhook Validation | 2 | ~3 | 2 | 1 |
 | 3. Automation | 1 | 0 | 1 | 0 |
-| **Total** | **11** | **~22** | **11** | **5** |
+| **Total** | **11** | **~23** | **11** | **5** |
+
+---
+
+## Review Log
+
+### Round 1 (ISSUES_FOUND)
+- Fixed: [CRITICAL] `app.listen()` at module level → added `if (require.main === module)` guard for Supertest compatibility
+- Fixed: [IMPORTANT] Task 1.4 file list said `index.test.js` but code used `send.test.js` → corrected to `Create: src/__tests__/send.test.js`
+- Fixed: [IMPORTANT] S2-AC5 timezone test only checked format regex → now mocks Date to verify Taipei date differs from UTC date at midnight boundary
+- Fixed: [IMPORTANT] S1-AC4 (retry success) missing from Slice 1 BDD test → added AC4 test case
+- Fixed: [IMPORTANT] `@line/bot-sdk` pinned to ^9.0.0 → updated to ^10.0.0 (latest stable, same API)
+- Deferred: [MINOR] Log output assertions (SENT/SKIPPED/ERROR) — user chose to skip for v1
+- Deferred: [MINOR] Real 1-second delay in retry tests — user chose to keep real timers for simplicity
+
+### Round 2 (ISSUES_FOUND)
+- Fixed: [IMPORTANT] `.env.example` update in Task 0.1 → added note to update local `.env` with missing vars
+- Fixed: [IMPORTANT] `curl -sf` in GitHub Actions → removed `-f` flag to allow manual HTTP status check and descriptive error message (matches design doc)
+- Fixed: [MINOR] `.gitignore` stale `data/state.json` → added removal instruction to Task 0.1 step 5
+- Verified correct: @line/bot-sdk v10 API, @upstash/redis SET NX syntax, Date mock for timezone, module.exports pattern, dependency graph, coverage matrix (all 18 ACs covered)
+
+### Round 3 (APPROVED)
+- Fixed: [COSMETIC] Task 1.3 referenced "v9" → updated to "v10"
+- Fixed: [COSMETIC] Coverage matrix S2-AC3 pointed to Task 2.1 → corrected to Task 2.2
+- Plan approved. All substantive issues resolved. Reviewer verified: SDK APIs correct, test strategy sound, timezone handling correct, no over-engineering, all 18 ACs covered.

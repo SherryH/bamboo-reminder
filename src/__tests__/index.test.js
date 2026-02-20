@@ -141,3 +141,70 @@ describe('formatMessage', () => {
     expect(msg).toContain('Day 31');
   });
 });
+
+describe('pushMessage', () => {
+  let pushMessage;
+  let mockPush;
+
+  beforeAll(() => {
+    jest.resetModules();
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
+    process.env.LINE_CHANNEL_SECRET = 'test-secret';
+    process.env.LINE_USER_ID = 'U1234567890abcdef1234567890abcdef';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
+
+    mockPush = jest.fn();
+    jest.mock('@line/bot-sdk', () => ({
+      messagingApi: {
+        MessagingApiClient: jest.fn(() => ({ pushMessage: mockPush })),
+      },
+      middleware: jest.fn(() => (req, res, next) => next()),
+    }));
+    jest.mock('express', () => {
+      const app = { get: jest.fn(), post: jest.fn(), listen: jest.fn(), use: jest.fn() };
+      return jest.fn(() => app);
+    });
+    jest.mock('@upstash/redis');
+
+    const mod = require('../index');
+    pushMessage = mod.pushMessage;
+  });
+
+  beforeEach(() => {
+    mockPush.mockReset();
+  });
+
+  test('S1-AC1: sends push message to configured user', async () => {
+    mockPush.mockResolvedValue({});
+
+    await pushMessage('Hello World');
+
+    expect(mockPush).toHaveBeenCalledWith({
+      to: 'U1234567890abcdef1234567890abcdef',
+      messages: [{ type: 'text', text: 'Hello World' }],
+    });
+  });
+
+  test('S1-AC4: retries once after 1s on failure', async () => {
+    mockPush
+      .mockRejectedValueOnce(new Error('LINE API error'))
+      .mockResolvedValueOnce({});
+
+    const start = Date.now();
+    await pushMessage('Hello');
+    const elapsed = Date.now() - start;
+
+    expect(mockPush).toHaveBeenCalledTimes(2);
+    expect(elapsed).toBeGreaterThanOrEqual(900); // ~1s delay
+  });
+
+  test('S1-AC5: throws after retry also fails', async () => {
+    mockPush
+      .mockRejectedValueOnce(new Error('fail 1'))
+      .mockRejectedValueOnce(new Error('fail 2'));
+
+    await expect(pushMessage('Hello')).rejects.toThrow('fail 2');
+    expect(mockPush).toHaveBeenCalledTimes(2);
+  });
+});

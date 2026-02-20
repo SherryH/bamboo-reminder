@@ -86,7 +86,7 @@ The server starts on port 3000. Visit `http://localhost:3000/send` to trigger a 
 
 ## Adding Friends as Recipients
 
-By default, the bot sends the daily message to a single user (the `LINE_USER_IDS` in your environment variables). To send it to additional friends, you need to make two small changes:
+The bot already supports multiple recipients via the `LINE_USER_IDS` environment variable (comma-separated).
 
 ### 1. Get your friend's LINE user ID
 
@@ -105,35 +105,15 @@ app.post('/webhook', lineMiddleware, (req, res) => {
 
 Have your friend scan your bot's QR code (found in the [LINE Developer Console](https://developers.line.biz/) under your channel's Messaging API tab). Their user ID will appear in your server logs.
 
-### 2. Send to multiple users
+### 2. Add their user ID
 
-Replace the single `LINE_USER_IDS` env var with a comma-separated list of user IDs:
+Append the new user ID to `LINE_USER_IDS`, separated by a comma:
 
 ```
-LINE_USER_IDSS=Uxxxxx_you,Uxxxxx_friend1,Uxxxxx_friend2
+LINE_USER_IDS=Uxxxxx_you,Uxxxxx_friend1,Uxxxxx_friend2
 ```
 
-Then update the `pushMessage` function in `src/index.js` to iterate over all IDs:
-
-```js
-const userIds = process.env.LINE_USER_IDSS.split(',');
-
-async function pushMessage(text) {
-  const results = [];
-  for (const userId of userIds) {
-    const message = { to: userId, messages: [{ type: 'text', text }] };
-    try {
-      results.push(await lineClient.pushMessage(message));
-    } catch (err) {
-      await new Promise((r) => setTimeout(r, 1000));
-      results.push(await lineClient.pushMessage(message));
-    }
-  }
-  return results;
-}
-```
-
-Remember to update `REQUIRED_VARS` at the top of the file to check for `LINE_USER_IDSS` instead of `LINE_USER_IDS`.
+That's it — the bot will send the daily message to all listed users.
 
 > **Note:** The LINE Messaging API free tier allows 200 push messages per month. Each recipient counts as one message per day, so with 6 friends you'd use ~180 messages/month.
 

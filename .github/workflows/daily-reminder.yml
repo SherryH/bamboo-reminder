@@ -1,0 +1,26 @@
+name: Daily Reminder
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # 4 AM UTC = 12 PM Asia/Taipei
+  workflow_dispatch: {}    # Manual trigger for testing
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2     # Handles Render cold start (30-90s)
+    steps:
+      - name: Trigger daily message
+        run: |
+          response=$(curl -s -w "\n%{http_code}" \
+            --connect-timeout 30 \
+            --max-time 90 \
+            "${{ secrets.RENDER_URL }}/send")
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | sed '$d')
+          echo "Status: $http_code"
+          echo "Response: $body"
+          if [ "$http_code" != "200" ]; then
+            echo "::error::Failed to send daily message (HTTP $http_code)"
+            exit 1
+          fi

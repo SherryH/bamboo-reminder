@@ -17,7 +17,7 @@
 - Component library: N/A (server-only, no UI)
 - API pattern: Express routes per CLAUDE.md
 - DB: Upstash Redis REST API
-- i18n: none
+- i18n: bilingual (Traditional Chinese + English) in data files and message format
 - Key libraries: `@line/bot-sdk`, `express`, `@upstash/redis`, `dotenv`
 - Import aliases: none (plain JS, relative imports)
 - Mandatory patterns: YAGNI, single source file, mock at infrastructure boundaries
@@ -102,77 +102,77 @@
 }
 ```
 
-2. **Create data/quotes.json** with 30 quotes:
+2. **Create data/quotes.json** with 30 bilingual quotes (Traditional Chinese + English):
 
 ```json
 [
-  { "text": "Many grains of rice make a bushel; many drops make a river.", "author": "Master Cheng Yen" },
-  { "text": "With gratitude, we gain blessings; with love, we gain wisdom.", "author": "Master Cheng Yen" },
-  { "text": "A kind word can warm three winter months.", "author": "Japanese Proverb" },
-  { "text": "The best time to plant a tree was twenty years ago. The second best time is now.", "author": "Chinese Proverb" },
-  { "text": "If you light a lamp for someone, it will also brighten your own path.", "author": "Buddhist Saying" },
-  { "text": "Do not dwell in the past, do not dream of the future, concentrate the mind on the present moment.", "author": "Buddha" },
-  { "text": "Thousands of candles can be lit from a single candle, and the life of the candle will not be shortened.", "author": "Buddha" },
-  { "text": "An ounce of practice is worth more than tons of preaching.", "author": "Mahatma Gandhi" },
-  { "text": "No act of kindness, no matter how small, is ever wasted.", "author": "Aesop" },
-  { "text": "We make a living by what we get, but we make a life by what we give.", "author": "Winston Churchill" },
-  { "text": "The fragrance always stays in the hand that gives the rose.", "author": "Hada Bejar" },
-  { "text": "When you are kind to others, it not only changes you, it changes the world.", "author": "Harold Kushner" },
-  { "text": "Happiness is not something ready-made. It comes from your own actions.", "author": "Dalai Lama" },
-  { "text": "In a gentle way, you can shake the world.", "author": "Mahatma Gandhi" },
-  { "text": "The purpose of life is not to be happy. It is to be useful, to be honorable, to be compassionate.", "author": "Ralph Waldo Emerson" },
-  { "text": "Giving is not just about making a donation. It is about making a difference.", "author": "Kathy Calvin" },
-  { "text": "Even a small star shines in the darkness.", "author": "Finnish Proverb" },
-  { "text": "The greatest good you can do for another is not just share your riches, but reveal to them their own.", "author": "Benjamin Disraeli" },
-  { "text": "Love and compassion are necessities, not luxuries. Without them, humanity cannot survive.", "author": "Dalai Lama" },
-  { "text": "One good deed has many claimants.", "author": "Yiddish Proverb" },
-  { "text": "To understand everything is to forgive everything.", "author": "Buddha" },
-  { "text": "What we have done for ourselves alone dies with us; what we have done for others and the world remains.", "author": "Albert Pike" },
-  { "text": "The simplest acts of kindness are by far more powerful than a thousand heads bowing in prayer.", "author": "Mahatma Gandhi" },
-  { "text": "When we give cheerfully and accept gratefully, everyone is blessed.", "author": "Maya Angelou" },
-  { "text": "Compassion is the basis of morality.", "author": "Arthur Schopenhauer" },
-  { "text": "Every charitable act is a stepping stone toward heaven.", "author": "Henry Ward Beecher" },
-  { "text": "Those who bring sunshine to the lives of others cannot keep it from themselves.", "author": "J.M. Barrie" },
-  { "text": "Real generosity is doing something nice for someone who will never find out.", "author": "Frank A. Clark" },
-  { "text": "Life is mostly froth and bubble; two things stand like stone: kindness in another's trouble, courage in your own.", "author": "Adam Lindsay Gordon" },
-  { "text": "Save fifty cents each day; the intent of a good heart, accumulated daily, becomes immeasurable.", "author": "Master Cheng Yen" }
+  { "text": "Many grains of rice make a bushel; many drops make a river.", "textZh": "粒米成籮，滴水成河。", "author": "證嚴法師 Master Cheng Yen" },
+  { "text": "With gratitude, we gain blessings; with love, we gain wisdom.", "textZh": "感恩得福，以愛得智。", "author": "證嚴法師 Master Cheng Yen" },
+  { "text": "A kind word can warm three winter months.", "textZh": "良言一句三冬暖。", "author": "日本諺語 Japanese Proverb" },
+  { "text": "The best time to plant a tree was twenty years ago. The second best time is now.", "textZh": "種樹最好的時間是二十年前，其次是現在。", "author": "中國諺語 Chinese Proverb" },
+  { "text": "If you light a lamp for someone, it will also brighten your own path.", "textZh": "為別人點一盞燈，也照亮了自己的路。", "author": "佛教格言 Buddhist Saying" },
+  { "text": "Do not dwell in the past, do not dream of the future, concentrate the mind on the present moment.", "textZh": "不念過去，不畏將來，心繫當下。", "author": "佛陀 Buddha" },
+  { "text": "Thousands of candles can be lit from a single candle, and the life of the candle will not be shortened.", "textZh": "千燈可從一燈點燃，而此燈之光不減。", "author": "佛陀 Buddha" },
+  { "text": "An ounce of practice is worth more than tons of preaching.", "textZh": "一分的實踐勝過千言萬語的說教。", "author": "甘地 Mahatma Gandhi" },
+  { "text": "No act of kindness, no matter how small, is ever wasted.", "textZh": "善行無論多小，皆不虛度。", "author": "伊索 Aesop" },
+  { "text": "We make a living by what we get, but we make a life by what we give.", "textZh": "我們靠獲取謀生，但靠付出創造人生。", "author": "邱吉爾 Winston Churchill" },
+  { "text": "The fragrance always stays in the hand that gives the rose.", "textZh": "贈人玫瑰，手有餘香。", "author": "Hada Bejar" },
+  { "text": "When you are kind to others, it not only changes you, it changes the world.", "textZh": "善待他人，不僅改變了你自己，也改變了世界。", "author": "Harold Kushner" },
+  { "text": "Happiness is not something ready-made. It comes from your own actions.", "textZh": "幸福不是現成的，它來自你自己的行動。", "author": "達賴喇嘛 Dalai Lama" },
+  { "text": "In a gentle way, you can shake the world.", "textZh": "以溫柔的方式，你可以撼動世界。", "author": "甘地 Mahatma Gandhi" },
+  { "text": "The purpose of life is not to be happy. It is to be useful, to be honorable, to be compassionate.", "textZh": "人生的目的不是追求快樂，而是有用、有尊嚴、有慈悲。", "author": "愛默生 Ralph Waldo Emerson" },
+  { "text": "Giving is not just about making a donation. It is about making a difference.", "textZh": "付出不只是捐款，而是創造改變。", "author": "Kathy Calvin" },
+  { "text": "Even a small star shines in the darkness.", "textZh": "即使是一顆小星星，也能在黑暗中閃耀。", "author": "芬蘭諺語 Finnish Proverb" },
+  { "text": "The greatest good you can do for another is not just share your riches, but reveal to them their own.", "textZh": "你能為他人做的最大善事，不只是分享財富，而是讓他們發現自己的富足。", "author": "迪斯雷利 Benjamin Disraeli" },
+  { "text": "Love and compassion are necessities, not luxuries. Without them, humanity cannot survive.", "textZh": "愛與慈悲是必需品，不是奢侈品。沒有它們，人類無法存續。", "author": "達賴喇嘛 Dalai Lama" },
+  { "text": "One good deed has many claimants.", "textZh": "一件善事，眾人受益。", "author": "意第緒諺語 Yiddish Proverb" },
+  { "text": "To understand everything is to forgive everything.", "textZh": "了解一切，就是原諒一切。", "author": "佛陀 Buddha" },
+  { "text": "What we have done for ourselves alone dies with us; what we have done for others and the world remains.", "textZh": "為自己做的隨我們而逝，為他人做的永留世間。", "author": "Albert Pike" },
+  { "text": "The simplest acts of kindness are by far more powerful than a thousand heads bowing in prayer.", "textZh": "最簡單的善行，遠比千人叩首祈禱更有力量。", "author": "甘地 Mahatma Gandhi" },
+  { "text": "When we give cheerfully and accept gratefully, everyone is blessed.", "textZh": "歡喜付出，感恩接受，人人皆蒙福。", "author": "馬雅·安傑洛 Maya Angelou" },
+  { "text": "Compassion is the basis of morality.", "textZh": "慈悲是道德的根基。", "author": "叔本華 Arthur Schopenhauer" },
+  { "text": "Every charitable act is a stepping stone toward heaven.", "textZh": "每一個慈善行為，都是通往天堂的踏腳石。", "author": "比徹 Henry Ward Beecher" },
+  { "text": "Those who bring sunshine to the lives of others cannot keep it from themselves.", "textZh": "為他人帶來陽光的人，自己也無法不被照亮。", "author": "巴里 J.M. Barrie" },
+  { "text": "Real generosity is doing something nice for someone who will never find out.", "textZh": "真正的慷慨，是為不會知道的人做好事。", "author": "克拉克 Frank A. Clark" },
+  { "text": "Life is mostly froth and bubble; two things stand like stone: kindness in another's trouble, courage in your own.", "textZh": "人生多泡影，唯二事如磐石：他人困難時的善良，自己困難時的勇氣。", "author": "哥登 Adam Lindsay Gordon" },
+  { "text": "Save fifty cents each day; the intent of a good heart, accumulated daily, becomes immeasurable.", "textZh": "每天存五毛錢，日積月累，善念無量。", "author": "證嚴法師 Master Cheng Yen" }
 ]
 ```
 
-3. **Create data/deeds.json** with 30 deeds:
+3. **Create data/deeds.json** with 30 bilingual deeds (Traditional Chinese + English):
 
 ```json
 [
-  { "text": "Send a thank-you message to someone who helped you this week." },
-  { "text": "Compliment a coworker on something specific they did well." },
-  { "text": "Hold the door open for the next three people behind you." },
-  { "text": "Call a family member you haven't spoken to in a while." },
-  { "text": "Leave a positive review for a local business you enjoy." },
-  { "text": "Offer to help a colleague with a task they're struggling with." },
-  { "text": "Write a handwritten note of appreciation for someone." },
-  { "text": "Donate an item you no longer need to someone who could use it." },
-  { "text": "Smile and greet a stranger today." },
-  { "text": "Let someone go ahead of you in line." },
-  { "text": "Share a useful article or resource with a friend." },
-  { "text": "Pick up a piece of litter you see on your walk today." },
-  { "text": "Send an encouraging message to someone going through a tough time." },
-  { "text": "Prepare a small treat or snack for your family or coworkers." },
-  { "text": "Listen fully to someone today without interrupting." },
-  { "text": "Tip a little extra at a restaurant or cafe." },
-  { "text": "Forgive someone who wronged you — let go of the resentment." },
-  { "text": "Teach someone a skill you know well." },
-  { "text": "Send a message to an old friend just to say you're thinking of them." },
-  { "text": "Offer your seat to someone on public transport." },
-  { "text": "Water a plant or tend to something living today." },
-  { "text": "Say 'please' and 'thank you' with extra sincerity today." },
-  { "text": "Donate to a cause you care about — even a small amount counts." },
-  { "text": "Write down three things you're grateful for today." },
-  { "text": "Check in on a neighbor, especially if they live alone." },
-  { "text": "Bring reusable bags or containers to reduce waste today." },
-  { "text": "Give someone the benefit of the doubt today." },
-  { "text": "Share your umbrella or offer help when it rains." },
-  { "text": "Spend 5 minutes tidying a shared space (kitchen, office, hallway)." },
-  { "text": "End the day by reflecting on one kind thing someone did for you." }
+  { "text": "Send a thank-you message to someone who helped you this week.", "textZh": "傳一則感謝訊息給這週幫助過你的人。" },
+  { "text": "Compliment a coworker on something specific they did well.", "textZh": "讚美同事一件他們做得很好的事。" },
+  { "text": "Hold the door open for the next three people behind you.", "textZh": "為身後的三個人扶住門。" },
+  { "text": "Call a family member you haven't spoken to in a while.", "textZh": "打電話給一位許久沒聯絡的家人。" },
+  { "text": "Leave a positive review for a local business you enjoy.", "textZh": "為你喜歡的店家留下正面評價。" },
+  { "text": "Offer to help a colleague with a task they're struggling with.", "textZh": "主動幫助正在苦惱的同事。" },
+  { "text": "Write a handwritten note of appreciation for someone.", "textZh": "手寫一張感謝卡給某個人。" },
+  { "text": "Donate an item you no longer need to someone who could use it.", "textZh": "把不需要的物品捐給需要的人。" },
+  { "text": "Smile and greet a stranger today.", "textZh": "今天對陌生人微笑打招呼。" },
+  { "text": "Let someone go ahead of you in line.", "textZh": "讓排在你後面的人先。" },
+  { "text": "Share a useful article or resource with a friend.", "textZh": "分享一篇有用的文章給朋友。" },
+  { "text": "Pick up a piece of litter you see on your walk today.", "textZh": "撿起路上看到的一片垃圾。" },
+  { "text": "Send an encouraging message to someone going through a tough time.", "textZh": "傳一則鼓勵的訊息給正在經歷困難的人。" },
+  { "text": "Prepare a small treat or snack for your family or coworkers.", "textZh": "為家人或同事準備一份小點心。" },
+  { "text": "Listen fully to someone today without interrupting.", "textZh": "今天專心聆聽一個人說話，不打斷。" },
+  { "text": "Tip a little extra at a restaurant or cafe.", "textZh": "在餐廳或咖啡廳多給一點小費。" },
+  { "text": "Forgive someone who wronged you — let go of the resentment.", "textZh": "原諒一個曾經傷害你的人，放下怨恨。" },
+  { "text": "Teach someone a skill you know well.", "textZh": "教別人一項你擅長的技能。" },
+  { "text": "Send a message to an old friend just to say you're thinking of them.", "textZh": "傳訊息給老朋友，告訴他你想念他。" },
+  { "text": "Offer your seat to someone on public transport.", "textZh": "在大眾運輸工具上讓座給有需要的人。" },
+  { "text": "Water a plant or tend to something living today.", "textZh": "今天澆一棵植物或照顧一個生命。" },
+  { "text": "Say 'please' and 'thank you' with extra sincerity today.", "textZh": "今天說「請」和「謝謝」時多一份真誠。" },
+  { "text": "Donate to a cause you care about — even a small amount counts.", "textZh": "捐款給你關心的事業——即使金額很小也有意義。" },
+  { "text": "Write down three things you're grateful for today.", "textZh": "寫下今天感恩的三件事。" },
+  { "text": "Check in on a neighbor, especially if they live alone.", "textZh": "關心一下鄰居，尤其是獨居的人。" },
+  { "text": "Bring reusable bags or containers to reduce waste today.", "textZh": "今天帶環保袋或容器來減少浪費。" },
+  { "text": "Give someone the benefit of the doubt today.", "textZh": "今天多給別人一些善意的理解。" },
+  { "text": "Share your umbrella or offer help when it rains.", "textZh": "下雨時分享你的傘或伸出援手。" },
+  { "text": "Spend 5 minutes tidying a shared space (kitchen, office, hallway).", "textZh": "花五分鐘整理一個公共空間。" },
+  { "text": "End the day by reflecting on one kind thing someone did for you.", "textZh": "在一天結束時，回想一件別人為你做的善事。" }
 ]
 ```
 
@@ -377,11 +377,13 @@ describe('formatMessage', () => {
     formatMessage = mod.formatMessage;
   });
 
-  test('S1-AC1: includes quote, deed, donation reminder, and day number', () => {
+  test('S1-AC1: includes quote, deed, donation reminder, and day number in both languages', () => {
     const msg = formatMessage(quotes[0], deeds[0], 1);
 
+    expect(msg).toContain(quotes[0].textZh);
     expect(msg).toContain(quotes[0].text);
     expect(msg).toContain(quotes[0].author);
+    expect(msg).toContain(deeds[0].textZh);
     expect(msg).toContain(deeds[0].text);
     expect(msg).toContain('Save your 50 cents today');
     expect(msg).toContain('Day 1');
@@ -393,7 +395,9 @@ describe('formatMessage', () => {
     const msg = formatMessage(quotes[quoteIndex], deeds[deedIndex], 6);
 
     expect(msg).toContain(quotes[quoteIndex].text);
+    expect(msg).toContain(quotes[quoteIndex].textZh);
     expect(msg).toContain(deeds[deedIndex].text);
+    expect(msg).toContain(deeds[deedIndex].textZh);
     expect(msg).toContain('Day 6');
   });
 
@@ -402,6 +406,7 @@ describe('formatMessage', () => {
     const msg = formatMessage(quotes[quoteIndex], deeds[0], 31);
 
     expect(msg).toContain(quotes[0].text);
+    expect(msg).toContain(quotes[0].textZh);
     expect(msg).toContain('Day 31');
   });
 });
@@ -414,16 +419,19 @@ describe('formatMessage', () => {
 ```javascript
 function formatMessage(quote, deed, dayCount) {
   return [
-    `🎋 Bamboo Bank — Day ${dayCount}`,
+    `🎋 竹筒歲月 Bamboo Bank — Day ${dayCount}`,
     '',
+    `「${quote.textZh}」`,
     `"${quote.text}"`,
     ` — ${quote.author}`,
     '',
-    `💡 Today's good deed:`,
+    `💡 今日善行 Today's good deed:`,
+    `   ${deed.textZh}`,
     `   ${deed.text}`,
     '',
-    `🪙 Save your 50 cents today.`,
-    `   Small daily kindness accumulates.`,
+    `🪙 今天存下你的五毛錢。`,
+    `   Save your 50 cents today.`,
+    `   日行一善，聚沙成塔。`,
   ].join('\n');
 }
 
@@ -616,7 +624,7 @@ describe('GET /send', () => {
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
 
-  test('S1-AC1: message contains quote, deed, and day number', async () => {
+  test('S1-AC1: message contains bilingual quote, deed, and day number', async () => {
     mockRedisSet.mockResolvedValue('OK');
     mockRedisIncr.mockResolvedValue(1);
 
@@ -625,6 +633,8 @@ describe('GET /send', () => {
     const sentText = mockPush.mock.calls[0][0].messages[0].text;
     expect(sentText).toContain('Day 1');
     expect(sentText).toContain('Save your 50 cents today');
+    expect(sentText).toContain('今天存下你的五毛錢');
+    expect(sentText).toContain('竹筒歲月');
     expect(sentText).toContain('Bamboo Bank');
   });
 
@@ -739,14 +749,14 @@ describe('Slice 1: User receives daily inspiration message', () => {
   });
 
   describe('AC1: Successful message send', () => {
-    it('Given valid credentials and data, When GET /send, Then sends formatted LINE message', async () => {
+    it('Given valid credentials and data, When GET /send, Then sends bilingual formatted LINE message', async () => {
       // Given: server running with valid credentials, dayCount = 0
       mockRedisIncr.mockResolvedValue(1);
 
       // When: GET /send
       const res = await request(app).get('/send');
 
-      // Then: message sent with quote, deed, reminder, day number
+      // Then: message sent with bilingual quote, deed, reminder, day number
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ sent: true, dayCount: 1 });
       expect(mockPush).toHaveBeenCalledTimes(1);
@@ -754,12 +764,14 @@ describe('Slice 1: User receives daily inspiration message', () => {
       const text = mockPush.mock.calls[0][0].messages[0].text;
       expect(text).toContain('Day 1');
       expect(text).toContain('Save your 50 cents today');
-      expect(text).toMatch(/".+"/); // Contains a quote
+      expect(text).toContain('今天存下你的五毛錢');
+      expect(text).toMatch(/「.+」/); // Contains a Chinese quote
+      expect(text).toMatch(/".+"/); // Contains an English quote
     });
   });
 
   describe('AC2: Message rotates sequentially', () => {
-    it('Given dayCount is 5, When GET /send, Then uses quote[5] and deed[5]', async () => {
+    it('Given dayCount is 5, When GET /send, Then uses quote[5] and deed[5] in both languages', async () => {
       // Given: dayCount will be 6 after INCR
       mockRedisIncr.mockResolvedValue(6);
 
@@ -771,13 +783,15 @@ describe('Slice 1: User receives daily inspiration message', () => {
       const deeds = require('../../data/deeds.json');
       const text = mockPush.mock.calls[0][0].messages[0].text;
       expect(text).toContain(quotes[5].text);
+      expect(text).toContain(quotes[5].textZh);
       expect(text).toContain(deeds[5].text);
+      expect(text).toContain(deeds[5].textZh);
       expect(text).toContain('Day 6');
     });
   });
 
   describe('AC3: Content wraps around', () => {
-    it('Given dayCount is 30, When GET /send, Then wraps to quote[0]', async () => {
+    it('Given dayCount is 30, When GET /send, Then wraps to quote[0] in both languages', async () => {
       // Given: dayCount = 31 after INCR, 30 % 30 = 0
       mockRedisIncr.mockResolvedValue(31);
 
@@ -788,6 +802,7 @@ describe('Slice 1: User receives daily inspiration message', () => {
       const quotes = require('../../data/quotes.json');
       const text = mockPush.mock.calls[0][0].messages[0].text;
       expect(text).toContain(quotes[0].text);
+      expect(text).toContain(quotes[0].textZh);
       expect(text).toContain('Day 31');
     });
   });

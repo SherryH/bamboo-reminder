@@ -26,14 +26,14 @@
 ### AC1: Successful message send
 ```gherkin
 Given the server is running with valid LINE credentials
-And quotes.json contains 30 quotes
-And deeds.json contains 30 deeds
+And quotes.json contains 30 bilingual quotes (text + textZh)
+And deeds.json contains 30 bilingual deeds (text + textZh)
 And the current dayCount in Redis is 0
 When GET /send is called
 Then a LINE push message is sent to the configured user
-And the message contains a quote from quotes.json
-And the message contains a deed from deeds.json
-And the message contains "Save your 50 cents today"
+And the message contains the quote in both Traditional Chinese and English
+And the message contains the deed in both Traditional Chinese and English
+And the message contains "今天存下你的五毛錢" and "Save your 50 cents today"
 And the message contains "Day 1"
 And the response is { sent: true, dayCount: 1 }
 ```
@@ -41,20 +41,20 @@ And the response is { sent: true, dayCount: 1 }
 ### AC2: Message rotates through content sequentially
 ```gherkin
 Given dayCount in Redis is 5
-And quotes.json has 30 quotes
-And deeds.json has 30 deeds
+And quotes.json has 30 bilingual quotes
+And deeds.json has 30 bilingual deeds
 When GET /send is called
-Then the message contains quote at index 5 (dayCount % 30)
-And the message contains deed at index 5 (dayCount % 30)
+Then the message contains quote at index 5 in both Traditional Chinese and English
+And the message contains deed at index 5 in both Traditional Chinese and English
 And the message contains "Day 6"
 ```
 
 ### AC3: Content wraps around after exhausting all items
 ```gherkin
 Given dayCount in Redis is 30
-And quotes.json has 30 quotes
+And quotes.json has 30 bilingual quotes
 When GET /send is called
-Then the message contains quote at index 0 (30 % 30)
+Then the message contains quote at index 0 in both Traditional Chinese and English
 And the message contains "Day 31"
 ```
 

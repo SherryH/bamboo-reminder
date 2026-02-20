@@ -45,29 +45,32 @@ A LINE Bot that sends a daily message at lunchtime (12:00 PM Taiwan time) contai
 ## Daily Message Format
 
 ```
-🎋 Bamboo Bank — Day 43
+🎋 竹筒歲月 Bamboo Bank — Day 43
 
+「粒米成籮，滴水成河。」
 "Many grains of rice make a bushel;
  many drops make a river."
- — Master Cheng Yen
+ — 證嚴法師 Master Cheng Yen
 
-💡 Today's good deed:
+💡 今日善行 Today's good deed:
+   傳一則感謝訊息給這週幫助過你的人。
    Send a thank-you message to someone
    who helped you this week.
 
-🪙 Save your 50 cents today.
-   Small daily kindness accumulates.
+🪙 今天存下你的五毛錢。
+   Save your 50 cents today.
+   日行一善，聚沙成塔。
 ```
 
 ## Data Files
 
 ### quotes.json
-- ~30 quotes from Tzu Chi teachings, Buddhist wisdom, and general kindness
-- Fields: `text`, `author`
+- ~30 bilingual quotes from Tzu Chi teachings, Buddhist wisdom, and general kindness
+- Fields: `text` (English), `textZh` (Traditional Chinese), `author` (bilingual)
 
 ### deeds.json
-- ~30 good deed suggestions
-- Fields: `text`
+- ~30 bilingual good deed suggestions
+- Fields: `text` (English), `textZh` (Traditional Chinese)
 
 ## State (Upstash Redis)
 

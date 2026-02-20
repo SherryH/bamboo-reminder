@@ -11,7 +11,7 @@ describe('Slice 4: Server validates webhook signatures', () => {
     jest.resetModules();
     process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
     process.env.LINE_CHANNEL_SECRET = 'test-webhook-secret';
-    process.env.LINE_USER_ID = 'U1234567890abcdef1234567890abcdef';
+    process.env.LINE_USER_IDS = 'U1234567890abcdef1234567890abcdef';
     process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
 

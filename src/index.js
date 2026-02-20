@@ -3,7 +3,7 @@ require('dotenv').config();
 const REQUIRED_VARS = [
   'LINE_CHANNEL_ACCESS_TOKEN',
   'LINE_CHANNEL_SECRET',
-  'LINE_USER_ID',
+  'LINE_USER_IDS',
   'UPSTASH_REDIS_REST_URL',
   'UPSTASH_REDIS_REST_TOKEN',
 ];
@@ -56,17 +56,23 @@ function getTaipeiDate() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
 }
 
+const userIds = process.env.LINE_USER_IDS.split(',').map((id) => id.trim());
+
 async function pushMessage(text) {
-  const message = {
-    to: process.env.LINE_USER_ID,
-    messages: [{ type: 'text', text }],
-  };
-  try {
-    return await lineClient.pushMessage(message);
-  } catch (err) {
-    await new Promise((r) => setTimeout(r, 1000));
-    return await lineClient.pushMessage(message);
+  const results = [];
+  for (const userId of userIds) {
+    const message = {
+      to: userId,
+      messages: [{ type: 'text', text }],
+    };
+    try {
+      results.push(await lineClient.pushMessage(message));
+    } catch (err) {
+      await new Promise((r) => setTimeout(r, 1000));
+      results.push(await lineClient.pushMessage(message));
+    }
   }
+  return results;
 }
 
 app.get('/send', async (req, res) => {

@@ -64,7 +64,7 @@ Create a `.env` file based on `.env.example`:
 |----------|---------|
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE Bot long-lived v2 token |
 | `LINE_CHANNEL_SECRET` | Webhook signature validation |
-| `LINE_USER_ID` | Your LINE user ID (push message target) |
+| `LINE_USER_IDS` | Your LINE user ID (push message target) |
 | `UPSTASH_REDIS_REST_URL` | Upstash Redis endpoint |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis auth token |
 
@@ -86,7 +86,7 @@ The server starts on port 3000. Visit `http://localhost:3000/send` to trigger a 
 
 ## Adding Friends as Recipients
 
-By default, the bot sends the daily message to a single user (the `LINE_USER_ID` in your environment variables). To send it to additional friends, you need to make two small changes:
+By default, the bot sends the daily message to a single user (the `LINE_USER_IDS` in your environment variables). To send it to additional friends, you need to make two small changes:
 
 ### 1. Get your friend's LINE user ID
 
@@ -107,16 +107,16 @@ Have your friend scan your bot's QR code (found in the [LINE Developer Console](
 
 ### 2. Send to multiple users
 
-Replace the single `LINE_USER_ID` env var with a comma-separated list of user IDs:
+Replace the single `LINE_USER_IDS` env var with a comma-separated list of user IDs:
 
 ```
-LINE_USER_IDS=Uxxxxx_you,Uxxxxx_friend1,Uxxxxx_friend2
+LINE_USER_IDSS=Uxxxxx_you,Uxxxxx_friend1,Uxxxxx_friend2
 ```
 
 Then update the `pushMessage` function in `src/index.js` to iterate over all IDs:
 
 ```js
-const userIds = process.env.LINE_USER_IDS.split(',');
+const userIds = process.env.LINE_USER_IDSS.split(',');
 
 async function pushMessage(text) {
   const results = [];
@@ -133,7 +133,7 @@ async function pushMessage(text) {
 }
 ```
 
-Remember to update `REQUIRED_VARS` at the top of the file to check for `LINE_USER_IDS` instead of `LINE_USER_ID`.
+Remember to update `REQUIRED_VARS` at the top of the file to check for `LINE_USER_IDSS` instead of `LINE_USER_IDS`.
 
 > **Note:** The LINE Messaging API free tier allows 200 push messages per month. Each recipient counts as one message per day, so with 6 friends you'd use ~180 messages/month.
 

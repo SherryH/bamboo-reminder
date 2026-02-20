@@ -21,7 +21,7 @@ You need 4 services set up before deploying the bot. Total setup time: ~20 minut
    - **Important**: Use the long-lived v2 token, NOT the short-lived one (which expires in 30 days)
 6. **Get Your User ID**: Channel → Basic Settings → Your user ID
    - 33-character string starting with `U`
-   - This becomes `LINE_USER_ID`
+   - This becomes `LINE_USER_IDS`
 7. **Set Webhook URL** (after deploying to Render):
    - Channel → Messaging API → Webhook URL
    - Enter: `https://<your-app>.onrender.com/webhook`
@@ -64,7 +64,7 @@ You need 4 services set up before deploying the bot. Total setup time: ~20 minut
 4. **Set Environment Variables** (Service → Environment):
    - `LINE_CHANNEL_ACCESS_TOKEN` = (from LINE Developer Console)
    - `LINE_CHANNEL_SECRET` = (from LINE Developer Console)
-   - `LINE_USER_ID` = (from LINE Developer Console)
+   - `LINE_USER_IDS` = (from LINE Developer Console)
    - `UPSTASH_REDIS_REST_URL` = (from Upstash Console)
    - `UPSTASH_REDIS_REST_TOKEN` = (from Upstash Console)
 5. **Note Your URL**: Copy `https://bamboo-reminder.onrender.com` (or whatever name you chose)
@@ -94,7 +94,7 @@ You need 4 services set up before deploying the bot. Total setup time: ~20 minut
 |----------|--------|-----------|
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE Developer Console → Channel → Messaging API | Render env var |
 | `LINE_CHANNEL_SECRET` | LINE Developer Console → Channel → Basic Settings | Render env var |
-| `LINE_USER_ID` | LINE Developer Console → Channel → Basic Settings | Render env var |
+| `LINE_USER_IDS` | LINE Developer Console → Channel → Basic Settings | Render env var |
 | `UPSTASH_REDIS_REST_URL` | Upstash Console → Database → REST API | Render env var |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Console → Database → REST API | Render env var |
 | `RENDER_URL` | Render Dashboard → Service URL | GitHub Actions secret |

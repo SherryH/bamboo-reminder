@@ -48,7 +48,7 @@ describe('Slice 1: User receives daily inspiration message', () => {
 
       // Then: message sent with bilingual quote, deed, reminder, day number
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ sent: true, dayCount: 1 });
+      expect(res.body).toEqual({ sent: true, dayCount: 1, preview: false });
       expect(mockPush).toHaveBeenCalledTimes(1);
 
       const text = mockPush.mock.calls[0][0].messages[0].text;

@@ -3,41 +3,51 @@ jest.mock('dotenv', () => ({ config: jest.fn() }));
 
 const request = require('supertest');
 
-describe('GET /send', () => {
-  let app;
-  let mockRedisSet;
-  let mockRedisIncr;
-  let mockPush;
+let app;
+let mockRedisSet;
+let mockRedisIncr;
+let mockRedisGet;
+let mockPush;
 
-  beforeEach(() => {
-    jest.resetModules();
-    process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
-    process.env.LINE_CHANNEL_SECRET = 'test-secret';
-    process.env.LINE_USER_IDS = 'U1234567890abcdef1234567890abcdef';
-    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
-    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
+beforeEach(() => {
+  jest.resetModules();
+  process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
+  process.env.LINE_CHANNEL_SECRET = 'test-secret';
+  process.env.LINE_USER_IDS = 'U1234567890abcdef1234567890abcdef';
+  process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
 
-    mockRedisSet = jest.fn();
-    mockRedisIncr = jest.fn();
-    mockPush = jest.fn().mockResolvedValue({});
+  mockRedisSet = jest.fn();
+  mockRedisIncr = jest.fn();
+  mockRedisGet = jest.fn();
+  mockPush = jest.fn().mockResolvedValue({});
 
-    jest.mock('@upstash/redis', () => ({
-      Redis: jest.fn(() => ({
-        set: mockRedisSet,
-        incr: mockRedisIncr,
-      })),
-    }));
+  jest.mock('@upstash/redis', () => ({
+    Redis: jest.fn(() => ({
+      set: mockRedisSet,
+      incr: mockRedisIncr,
+      get: mockRedisGet,
+    })),
+  }));
 
-    jest.mock('@line/bot-sdk', () => ({
-      messagingApi: {
-        MessagingApiClient: jest.fn(() => ({ pushMessage: mockPush })),
-      },
-      middleware: jest.fn(() => (req, res, next) => next()),
-    }));
+  jest.mock('@line/bot-sdk', () => ({
+    messagingApi: {
+      MessagingApiClient: jest.fn(() => ({ pushMessage: mockPush })),
+    },
+    middleware: jest.fn(() => (req, res, next) => next()),
+  }));
 
-    app = require('../index');
+  app = require('../index');
+});
+
+describe('GET /', () => {
+  test('returns 200', async () => {
+    const res = await request(app).get('/');
+    expect(res.status).toBe(200);
   });
+});
 
+describe('GET /send', () => {
   test('S1-AC1: sends message and returns { sent: true, dayCount }', async () => {
     mockRedisSet.mockResolvedValue('OK'); // SET NX succeeded
     mockRedisIncr.mockResolvedValue(1);   // dayCount = 1
@@ -45,7 +55,7 @@ describe('GET /send', () => {
     const res = await request(app).get('/send');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ sent: true, dayCount: 1 });
+    expect(res.body).toEqual({ sent: true, dayCount: 1, preview: false });
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
 
@@ -75,46 +85,12 @@ describe('GET /send', () => {
 });
 
 describe('Duplicate prevention (Slice 2)', () => {
-  let app;
-  let mockRedisSet;
-  let mockRedisIncr;
-  let mockPush;
-
-  beforeEach(() => {
-    jest.resetModules();
-    process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
-    process.env.LINE_CHANNEL_SECRET = 'test-secret';
-    process.env.LINE_USER_IDS = 'U1234567890abcdef1234567890abcdef';
-    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
-    process.env.UPSTASH_REDIS_REST_TOKEN = 'test';
-
-    mockRedisSet = jest.fn();
-    mockRedisIncr = jest.fn();
-    mockPush = jest.fn().mockResolvedValue({});
-
-    jest.mock('@upstash/redis', () => ({
-      Redis: jest.fn(() => ({
-        set: mockRedisSet,
-        incr: mockRedisIncr,
-      })),
-    }));
-
-    jest.mock('@line/bot-sdk', () => ({
-      messagingApi: {
-        MessagingApiClient: jest.fn(() => ({ pushMessage: mockPush })),
-      },
-      middleware: jest.fn(() => (req, res, next) => next()),
-    }));
-
-    app = require('../index');
-  });
-
   test('S2-AC1: blocks duplicate request on same day', async () => {
     mockRedisSet.mockResolvedValue(null); // SET NX returns null = key exists
 
     const res = await request(app).get('/send');
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(429);
     expect(res.body).toEqual({ sent: false, reason: 'already_sent' });
     expect(mockPush).not.toHaveBeenCalled();
   });
@@ -126,7 +102,7 @@ describe('Duplicate prevention (Slice 2)', () => {
     const res = await request(app).get('/send');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ sent: true, dayCount: 2 });
+    expect(res.body).toEqual({ sent: true, dayCount: 2, preview: false });
     expect(mockPush).toHaveBeenCalledTimes(1);
   });
 
@@ -167,5 +143,36 @@ describe('Duplicate prevention (Slice 2)', () => {
     expect(key).toBe('sent:2026-02-17');
 
     global.Date = realDate;
+  });
+});
+
+describe('Force mode (manual trigger)', () => {
+  test('force=true sends message and returns preview: true', async () => {
+    mockRedisGet.mockResolvedValue('5'); // dayCount is currently 5
+
+    const res = await request(app).get('/send?force=true');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ sent: true, dayCount: 6, preview: true });
+    expect(mockPush).toHaveBeenCalledTimes(1);
+  });
+
+  test('force=true does not call redis.set or redis.incr', async () => {
+    mockRedisGet.mockResolvedValue('3');
+
+    await request(app).get('/send?force=true');
+
+    expect(mockRedisSet).not.toHaveBeenCalled();
+    expect(mockRedisIncr).not.toHaveBeenCalled();
+    expect(mockRedisGet).toHaveBeenCalledWith('dayCount');
+  });
+
+  test('force=true with null dayCount (first-ever run) produces dayCount 1', async () => {
+    mockRedisGet.mockResolvedValue(null);
+
+    const res = await request(app).get('/send?force=true');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ sent: true, dayCount: 1, preview: true });
   });
 });

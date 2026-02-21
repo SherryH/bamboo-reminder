@@ -75,25 +75,36 @@ async function pushMessage(text) {
   return results;
 }
 
+app.get('/', (req, res) => res.json({ status: 'ok' }));
+
 app.get('/send', async (req, res) => {
   try {
     const today = getTaipeiDate();
-    const setResult = await redis.set(`sent:${today}`, '1', { nx: true, ex: 172800 });
+    const force = req.query.force === 'true';
 
-    if (!setResult) {
-      console.log(`SKIPPED already_sent date=${today}`);
-      return res.json({ sent: false, reason: 'already_sent' });
+    if (!force) {
+      const setResult = await redis.set(`sent:${today}`, '1', { nx: true, ex: 172800 });
+
+      if (!setResult) {
+        console.log(`SKIPPED already_sent date=${today}`);
+        return res.status(429).json({ sent: false, reason: 'already_sent' });
+      }
     }
 
-    const dayCount = await redis.incr('dayCount');
+    // force: peek without incrementing (preview next message). cron: increment normally.
+    // redis.get returns a string or null; Number(null) === 0, so first-ever run produces dayCount 1.
+    const dayCount = force
+      ? Number(await redis.get('dayCount') || 0) + 1
+      : await redis.incr('dayCount');
+
     const quote = quotes[(dayCount - 1) % quotes.length];
     const deed = deeds[(dayCount - 1) % deeds.length];
     const message = formatMessage(quote, deed, dayCount);
 
     await pushMessage(message);
 
-    console.log(`SENT day=${dayCount} date=${today}`);
-    res.json({ sent: true, dayCount });
+    console.log(`SENT day=${dayCount} date=${today} force=${force}`);
+    res.json({ sent: true, dayCount, preview: force });
   } catch (err) {
     console.error(`ERROR ${new Date().toISOString()} ${err.message}`);
     res.status(500).json({ error: err.message });

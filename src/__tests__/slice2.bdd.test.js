@@ -62,7 +62,7 @@ describe('Slice 2: User receives exactly one message per day', () => {
       const res = await request(app).get('/send');
 
       // Then
-      expect(res.body).toEqual({ sent: true, dayCount: 5 });
+      expect(res.body).toEqual({ sent: true, dayCount: 5, preview: false });
       expect(mockPush).toHaveBeenCalledTimes(1);
     });
   });

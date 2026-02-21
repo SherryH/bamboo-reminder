@@ -8,19 +8,34 @@ on:
 jobs:
   send:
     runs-on: ubuntu-latest
-    timeout-minutes: 2     # Handles Render cold start (30-90s)
+    timeout-minutes: 5
     steps:
       - name: Trigger daily message
         run: |
-          response=$(curl -s -w "\n%{http_code}" \
-            --connect-timeout 30 \
-            --max-time 90 \
-            "${{ secrets.RENDER_URL }}/send")
-          http_code=$(echo "$response" | tail -1)
-          body=$(echo "$response" | sed '$d')
+          SEND_URL="${{ secrets.RENDER_URL }}/send"
+          MAX_ATTEMPTS=2
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SEND_URL="${SEND_URL}?force=true"
+            MAX_ATTEMPTS=1  # No retry for force — prevents duplicate messages
+            echo "Manual trigger — preview mode (no state changes)"
+          fi
+          for attempt in $(seq 1 $MAX_ATTEMPTS); do
+            response=$(curl -s -w "\n%{http_code}" \
+              --max-time 100 \
+              "$SEND_URL")
+            http_code=$(echo "$response" | tail -1)
+            # Break on any application-level response (200, 429, 5xx).
+            # Only retry on 000 (curl timeout) or 502/503 (Render boot errors).
+            if [ "$http_code" != "000" ] && [ "$http_code" != "502" ] && [ "$http_code" != "503" ]; then break; fi
+            echo "Attempt $attempt: response $http_code (cold start?), retrying..."
+          done
           echo "Status: $http_code"
-          echo "Response: $body"
-          if [ "$http_code" != "200" ]; then
+          echo "Response: $response"
+          if [ "$http_code" = "200" ]; then
+            echo "::notice::Daily message sent successfully"
+          elif [ "$http_code" = "429" ]; then
+            echo "::warning::Message already sent today — skipping"
+          else
             echo "::error::Failed to send daily message (HTTP $http_code)"
             exit 1
           fi

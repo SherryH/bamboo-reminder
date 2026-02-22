@@ -2,7 +2,7 @@ name: Daily Reminder
 
 on:
   schedule:
-    - cron: '0 4 * * *'  # 4 AM UTC = 12 PM Asia/Taipei
+    - cron: '17 4 * * *'  # 4:17 AM UTC ≈ 12:17 PM Asia/Taipei
   workflow_dispatch: {}    # Manual trigger for testing
 
 jobs:
